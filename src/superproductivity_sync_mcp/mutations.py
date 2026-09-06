@@ -4,6 +4,7 @@ snapshot and emit the matching operation(s)."""
 from __future__ import annotations
 
 import copy
+import random
 from typing import TYPE_CHECKING, Any
 
 from . import reducers as r
@@ -398,8 +399,6 @@ def update_project(
 
 
 def create_tag(ctx: MutationContext, *, title: str, color: str | None = None) -> dict[str, Any]:
-    import random
-
     state = ctx.state
     title = _clean_title(title)
     tags = r.slice_(state, "tag")

@@ -9,6 +9,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from . import __version__
 from . import mutations as m
 from . import queries as q
 from .config import Settings
@@ -46,7 +47,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         name="super-productivity",
         title="Super Productivity",
         instructions=INSTRUCTIONS,
-        version="0.1.0",
+        version=__version__,
     )
 
     async def snapshot():
@@ -193,24 +194,22 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         parent_task_id: str | None = None,
         add_to_bottom: Annotated[bool, Field(description="Append at the end instead of the top")] = False,
     ) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            task = m.create_task(
+        return await store.mutate(
+            lambda ctx: task_out(
                 ctx,
-                title=title,
-                project_id=project_id,
-                notes=notes,
-                tag_ids=tag_ids,
-                due_day=due_day,
-                time_estimate_ms=_min_to_ms(time_estimate_minutes),
-                parent_task_id=parent_task_id,
-                add_to_bottom=add_to_bottom,
+                m.create_task(
+                    ctx,
+                    title=title,
+                    project_id=project_id,
+                    notes=notes,
+                    tag_ids=tag_ids,
+                    due_day=due_day,
+                    time_estimate_ms=_min_to_ms(time_estimate_minutes),
+                    parent_task_id=parent_task_id,
+                    add_to_bottom=add_to_bottom,
+                ),
             )
-            result.update(task_out(ctx, task))
-
-        await store.mutate(fn)
-        return result
+        )
 
     @server.tool(
         annotations=RW,
@@ -224,22 +223,20 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         time_estimate_minutes: Annotated[int | None, Field(ge=0)] = None,
         tag_ids: Annotated[list[str] | None, Field(description="Replaces the full tag list")] = None,
     ) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            task = m.update_task(
+        return await store.mutate(
+            lambda ctx: task_out(
                 ctx,
-                task_id,
-                title=title,
-                notes=notes,
-                is_done=is_done,
-                time_estimate_ms=_min_to_ms(time_estimate_minutes),
-                tag_ids=tag_ids,
+                m.update_task(
+                    ctx,
+                    task_id,
+                    title=title,
+                    notes=notes,
+                    is_done=is_done,
+                    time_estimate_ms=_min_to_ms(time_estimate_minutes),
+                    tag_ids=tag_ids,
+                ),
             )
-            result.update(task_out(ctx, task))
-
-        await store.mutate(fn)
-        return result
+        )
 
     @server.tool(
         annotations=RW,
@@ -250,36 +247,18 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         day: Annotated[str, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")],
         time: Annotated[str | None, Field(description="HH:MM (24h) in the user's time zone")] = None,
     ) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(task_out(ctx, m.schedule_task(ctx, task_id, day=day, time_hhmm=time)))
-
-        await store.mutate(fn)
-        return result
+        return await store.mutate(lambda ctx: task_out(ctx, m.schedule_task(ctx, task_id, day=day, time_hhmm=time)))
 
     @server.tool(
         annotations=RW,
         description="Remove day/time scheduling from a task (also removes it from Today).",
     )
     async def unschedule_task(task_id: str) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(task_out(ctx, m.unschedule_task(ctx, task_id)))
-
-        await store.mutate(fn)
-        return result
+        return await store.mutate(lambda ctx: task_out(ctx, m.unschedule_task(ctx, task_id)))
 
     @server.tool(annotations=RW, description="Move a task (with its sub-tasks) to another project.")
     async def move_task_to_project(task_id: str, project_id: str) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(task_out(ctx, m.move_task_to_project(ctx, task_id, project_id)))
-
-        await store.mutate(fn)
-        return result
+        return await store.mutate(lambda ctx: task_out(ctx, m.move_task_to_project(ctx, task_id, project_id)))
 
     @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a task and its sub-tasks.")
     async def delete_task(task_id: str) -> dict[str, Any]:
@@ -287,18 +266,11 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
 
     @server.tool(annotations=RW, description="Create a project.")
     async def create_project(title: str, is_enable_backlog: bool = False) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(
-                q.project_summary(
-                    ctx.state,
-                    m.create_project(ctx, title=title, is_enable_backlog=is_enable_backlog),
-                )
+        return await store.mutate(
+            lambda ctx: q.project_summary(
+                ctx.state, m.create_project(ctx, title=title, is_enable_backlog=is_enable_backlog)
             )
-
-        await store.mutate(fn)
-        return result
+        )
 
     @server.tool(
         annotations=RW,
@@ -307,57 +279,34 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     async def update_project(
         project_id: str, title: str | None = None, is_archived: bool | None = None
     ) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(
-                q.project_summary(
-                    ctx.state,
-                    m.update_project(ctx, project_id, title=title, is_archived=is_archived),
-                )
+        return await store.mutate(
+            lambda ctx: q.project_summary(
+                ctx.state, m.update_project(ctx, project_id, title=title, is_archived=is_archived)
             )
-
-        await store.mutate(fn)
-        return result
+        )
 
     @server.tool(annotations=RW, description="Create a tag. Color is an optional hex string like #29a1aa.")
     async def create_tag(title: str, color: str | None = None) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(q.tag_summary(ctx.state, m.create_tag(ctx, title=title, color=color)))
-
-        await store.mutate(fn)
-        return result
+        return await store.mutate(lambda ctx: q.tag_summary(ctx.state, m.create_tag(ctx, title=title, color=color)))
 
     @server.tool(
         annotations=RW,
         description="Create a (markdown) note, optionally attached to a project or pinned to Today.",
     )
     async def create_note(content: str, project_id: str | None = None, pin_to_today: bool = False) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(
-                q.note_summary(
-                    ctx.state,
-                    m.create_note(ctx, content=content, project_id=project_id, pin_to_today=pin_to_today),
-                    ctx.tz,
-                )
+        return await store.mutate(
+            lambda ctx: q.note_summary(
+                ctx.state,
+                m.create_note(ctx, content=content, project_id=project_id, pin_to_today=pin_to_today),
+                ctx.tz,
             )
-
-        await store.mutate(fn)
-        return result
+        )
 
     @server.tool(annotations=RW, description="Replace the content of a note.")
     async def update_note(note_id: str, content: str) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-
-        def fn(ctx):
-            result.update(q.note_summary(ctx.state, m.update_note(ctx, note_id, content=content), ctx.tz))
-
-        await store.mutate(fn)
-        return result
+        return await store.mutate(
+            lambda ctx: q.note_summary(ctx.state, m.update_note(ctx, note_id, content=content), ctx.tz)
+        )
 
     @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a note.")
     async def delete_note(note_id: str) -> dict[str, Any]:

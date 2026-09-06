@@ -21,6 +21,7 @@ from xml.etree import ElementTree as ET
 
 import httpx
 
+from . import __version__
 from .codec import md5_hex
 
 log = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ class NextcloudDav:
             timeout=timeout,
             follow_redirects=False,
             transport=transport,
-            headers={"User-Agent": "superproductivity-sync-mcp/0.1"},
+            headers={"User-Agent": f"superproductivity-sync-mcp/{__version__}"},
         )
 
     async def aclose(self) -> None:

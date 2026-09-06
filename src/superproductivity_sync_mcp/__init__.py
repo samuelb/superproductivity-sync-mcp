@@ -6,4 +6,9 @@ Model Context Protocol and writes changes back as operation-log entries that
 every other Super Productivity installation replays on its next sync.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("superproductivity-sync-mcp")
+except PackageNotFoundError:  # pragma: no cover - running from a bare checkout
+    __version__ = "0.0.0"
