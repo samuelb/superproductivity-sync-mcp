@@ -7,7 +7,7 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.14-slim
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata curl \
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --create-home app \
     && mkdir -p /data && chown app:app /data
@@ -22,5 +22,5 @@ USER app
 VOLUME ["/data"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8000/healthz || exit 1
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
 CMD ["superproductivity-sync-mcp"]

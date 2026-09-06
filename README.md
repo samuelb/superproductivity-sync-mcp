@@ -119,7 +119,7 @@ All settings are environment variables (see `.env.example`).
 | `MCP_AUTH_TOKENS` | comma-separated bearer tokens (≥ 16 chars each) |
 | `MCP_ALLOW_TOKEN_IN_PATH` | accept `https://host/t/<token>/mcp` for clients without header support (ChatGPT) |
 | `MCP_AUTH_DISABLED` | `true` only if your proxy authenticates every request |
-| `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens) |
+| `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens). When set, requests that carry an `Origin` header are rejected too, since no origins are allow-listed |
 | `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `LOG_LEVEL`, `PORT` | tuning |
 
 Use one token per client so you can revoke them individually.

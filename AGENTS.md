@@ -22,6 +22,8 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
 - `src/superproductivity_sync_mcp/mutations.py` — tool-level changes: validate, reduce, emit op.
 - `src/superproductivity_sync_mcp/store.py` — download → mutate → conditional upload with retry.
 - `src/superproductivity_sync_mcp/queries.py` — read-only views. `server.py` — MCP tools. `app.py` — ASGI app + auth.
+- `src/superproductivity_sync_mcp/ids.py` — nanoid / UUIDv7 / client ids. `timeutil.py` — "today", start-of-next-day, day parsing.
+- `src/superproductivity_sync_mcp/__main__.py` — entry point: settings, start-up probe, uvicorn.
 - `tests/` — pytest; `tests/fake_dav.py` is an in-process Nextcloud stand-in.
 - `docs/adr/` — decisions (index: `docs/adr/README.md`).
 
