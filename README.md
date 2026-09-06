@@ -143,7 +143,7 @@ mcp_servers:
   super_productivity:
     url: "https://mcp.example.com/mcp"
     headers:
-      Authorization: "Bearer ${SPMCP_TOKEN}"
+      Authorization: "Bearer ${SYNC_MCP_TOKEN}"
 ```
 
 **Pebble Index** (Index app → MCP & Tool Settings → sandbox group → add MCP
