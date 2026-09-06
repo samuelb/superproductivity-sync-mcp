@@ -328,5 +328,17 @@ class SyncStore:
                 return result
             raise ConflictError(f"Could not write the sync file after {self.max_attempts} attempts: {last_error}")
 
+    # --- startup -----------------------------------------------------------------
+
+    async def probe(self) -> SyncFile:
+        """Fail fast on misconfiguration: credentials, folder, file format, password.
+
+        Raises ``AuthFailed`` / ``SyncError`` for configuration problems and other
+        ``WebDavError`` subclasses for connectivity problems; callers decide which
+        of those are fatal.
+        """
+        await self.dav.test_connection()
+        return await self.load(force=True)
+
     async def aclose(self) -> None:
         await self.dav.aclose()

@@ -201,12 +201,19 @@ class NextcloudDav:
         raise HttpError(resp.status_code, "MKCOL", url, resp.text)
 
     async def test_connection(self) -> None:
+        """PROPFIND the user's DAV root: checks URL, credentials and user id."""
         body = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
-        resp = await self._request(
-            "PROPFIND",
-            self.base_url,
-            content=body,
-            headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
-        )
+        try:
+            resp = await self._request(
+                "PROPFIND",
+                self.base_url,
+                content=body,
+                headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
+            )
+        except NotFound as e:
+            raise NotFound(
+                f"DAV root {self.base_url} does not exist; NEXTCLOUD_USER must be the Nextcloud "
+                "user id as shown in the WebDAV URL under Files > Settings"
+            ) from e
         if resp.status_code not in (200, 207):
             raise HttpError(resp.status_code, "PROPFIND", "/", resp.text)

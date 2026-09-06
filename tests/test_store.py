@@ -1,9 +1,12 @@
+import httpx
 import pytest
 
 from superproductivity_sync_mcp import mutations as m
-from superproductivity_sync_mcp.store import ConflictError
+from superproductivity_sync_mcp.store import ClientIdentity, ConflictError, SyncError, SyncStore
+from superproductivity_sync_mcp.webdav import NextcloudDav
 
-from .conftest import BASE, decode_remote
+from .conftest import BASE, TZ, decode_remote
+from .fake_dav import make_app
 
 
 async def test_create_task_writes_op_and_snapshot(store, fake_dav):
@@ -108,3 +111,29 @@ async def test_recent_ops_trimmed(store, fake_dav):
     out = decode_remote(fake_dav)
     assert len(out["recentOps"]) == MAX_RECENT_OPS and out["recentOps"][-1]["a"] == "HA"
     assert out["oldestOpSyncVersion"] == 1
+
+
+async def test_probe_reports_state(store):
+    sf = await store.probe()
+    assert sf.sync_version == 7 and sf.data["clientId"] == "E_abc123"
+
+
+async def test_probe_fails_on_missing_file(store, fake_dav):
+    del fake_dav.files[f"{BASE}/sync-data.json"]
+    with pytest.raises(SyncError, match="Run a sync"):
+        await store.probe()
+
+
+async def test_probe_explains_wrong_user_id(fake_dav, tmp_path):
+    from superproductivity_sync_mcp.webdav import NotFound
+
+    transport = httpx.ASGITransport(app=make_app(fake_dav))
+    dav = NextcloudDav("https://cloud.example.com", "bob", "bob", "pw", "/sp", transport=transport)
+    store = SyncStore(dav, ClientIdentity.load(tmp_path, "M_test01"), password=None, allow_plaintext=False, tz=TZ)
+    # the fake has no files under /files/bob/, so the root PROPFIND works but the GET 404s -> SyncError
+    with pytest.raises(SyncError, match="Run a sync"):
+        await store.probe()
+    # a 404 on the DAV root itself names the variable to fix
+    fake_dav.propfind_root_missing = True
+    with pytest.raises(NotFound, match="NEXTCLOUD_USER"):
+        await store.probe()

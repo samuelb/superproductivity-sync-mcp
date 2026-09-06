@@ -3,6 +3,8 @@ import pytest
 
 from superproductivity_sync_mcp.app import TokenAuthMiddleware
 
+from .conftest import BASE
+
 
 async def _echo(scope, receive, send):
     from starlette.responses import JSONResponse
@@ -88,8 +90,39 @@ def test_uvicorn_access_log_disabled(monkeypatch):
 
     captured = {}
     monkeypatch.setattr(entry.uvicorn, "run", lambda app, **kw: captured.update(kw))
-    monkeypatch.setattr(entry, "create_app", lambda settings: object())
+    monkeypatch.setattr(entry, "create_app", lambda settings, store: object())
+    monkeypatch.setattr(entry.SyncStore, "from_settings", classmethod(lambda cls, s: object()))
+
+    async def no_probe(store):
+        return None
+
+    monkeypatch.setattr(entry, "_probe", no_probe)
     for k in ("NEXTCLOUD_URL", "NEXTCLOUD_USER", "NEXTCLOUD_PASSWORD", "MCP_AUTH_TOKENS"):
         monkeypatch.setenv(k, "https://cloud.example.com" if k == "NEXTCLOUD_URL" else "secret-token-1234567")
     entry.main()
     assert captured["access_log"] is False
+
+
+async def test_startup_probe_classifies_errors(store, fake_dav, caplog):
+    import superproductivity_sync_mcp.__main__ as entry
+    from superproductivity_sync_mcp.webdav import WebDavError
+
+    # a healthy remote logs the sync file summary
+    with caplog.at_level("INFO"):
+        await entry._probe(store)
+    assert "syncVersion=7" in caplog.text
+
+    # configuration problems (no file, wrong password, bad credentials) abort start-up
+    del fake_dav.files[f"{BASE}/sync-data.json"]
+    with pytest.raises(SystemExit) as ei:
+        await entry._probe(store)
+    assert ei.value.code == 2
+
+    # a merely unreachable Nextcloud only warns
+    async def unreachable():
+        raise WebDavError("PROPFIND failed: connection refused")
+
+    store.dav.test_connection = unreachable
+    with caplog.at_level("WARNING"):
+        await entry._probe(store)
+    assert "not reachable" in caplog.text

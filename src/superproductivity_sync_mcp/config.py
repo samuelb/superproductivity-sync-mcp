@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,6 +53,31 @@ class Settings(BaseSettings):
         v = v.strip().rstrip("/")
         if not v.lower().startswith(("http://", "https://")):
             raise ValueError("NEXTCLOUD_URL must start with http:// or https://")
+        return v
+
+    @field_validator("sp_timezone")
+    @classmethod
+    def _check_timezone(cls, v: str) -> str:
+        v = v.strip()
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"SP_TIMEZONE {v!r} is not a known IANA time zone (e.g. Europe/Berlin)") from e
+        return v
+
+    @field_validator("log_level")
+    @classmethod
+    def _check_log_level(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not isinstance(logging.getLevelNamesMapping().get(v), int):
+            raise ValueError("LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
+        return v
+
+    @field_validator("sp_max_write_attempts")
+    @classmethod
+    def _check_attempts(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("SP_MAX_WRITE_ATTEMPTS must be at least 1")
         return v
 
     @property

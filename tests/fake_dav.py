@@ -23,6 +23,8 @@ class FakeDav:
     propfinds: int = 0
     # Set to a callable to mutate state between the client's GET and PUT.
     on_put: object = None
+    # Simulate an unknown user id: PROPFIND on the DAV root returns 404.
+    propfind_root_missing: bool = False
 
     def etag(self, path: str) -> str:
         return '"' + hashlib.sha1(self.files[path]).hexdigest()[:20] + '"'
@@ -40,7 +42,12 @@ class FakeDav:
             )
         if method == "PROPFIND":
             self.propfinds += 1
-            if path.rstrip("/") + "/" in {p.rsplit("/", 1)[0] + "/" for p in self.files} or path in self.files:
+            prefix = path.rstrip("/") + "/"
+            # The user's DAV root (trailing slash) always exists; other collections
+            # exist when they contain a file.
+            if self.propfind_root_missing and path.endswith("/"):
+                return Response(status_code=404)
+            if path.endswith("/") or path in self.files or any(f.startswith(prefix) for f in self.files):
                 etag = self.etag(path) if path in self.files else '"dir"'
                 body = (
                     '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response>'

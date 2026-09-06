@@ -97,6 +97,11 @@ network and forward to `sync-mcp:8000`. Examples:
 The MCP endpoint is `https://<host>/mcp` (streamable HTTP, stateless, JSON
 responses). Health check: `GET /healthz` (unauthenticated).
 
+On start-up the server validates its configuration and probes Nextcloud once:
+wrong credentials, user id, sync folder, encryption password or an unsupported
+file format abort with a `Configuration error` message (exit code 2); a merely
+unreachable Nextcloud is logged and retried on the first tool call.
+
 ### Configuration
 
 All settings are environment variables (see `.env.example`).
