@@ -7,14 +7,26 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import reducers as r
-from .timeutil import ms_to_iso
+from .timeutil import db_date_str, ms_to_iso
 
 TODAY = r.TODAY_TAG_ID
 
 
 def _entities(state: dict[str, Any], key: str) -> tuple[list[str], dict[str, Any]]:
+    """Return ``(ids, entities)`` of a slice *by reference*; callers only read."""
     es = state.get(key) or {}
-    return list(es.get("ids") or []), dict(es.get("entities") or {})
+    return es.get("ids") or [], es.get("entities") or {}
+
+
+def effective_due_day(task: dict[str, Any], tz: ZoneInfo) -> str | None:
+    """The day a task is planned for: ``dueDay``, else the calendar day of ``dueWithTime``."""
+    due_day = task.get("dueDay")
+    if isinstance(due_day, str) and due_day:
+        return due_day
+    due_ms = task.get("dueWithTime")
+    if isinstance(due_ms, (int, float)) and due_ms > 0:
+        return db_date_str(due_ms, tz)
+    return None
 
 
 def _ms_to_min(ms: Any) -> int:
@@ -36,6 +48,7 @@ def task_summary(
     project = projects.get(task.get("projectId") or "")
     due_day = task.get("dueDay")
     due_ms = task.get("dueWithTime")
+    eff_day = effective_due_day(task, tz)
     out: dict[str, Any] = {
         "id": task["id"],
         "title": task.get("title", ""),
@@ -45,7 +58,7 @@ def task_summary(
         "tags": [{"id": t, "title": (tags.get(t) or {}).get("title")} for t in task.get("tagIds") or [] if t != TODAY],
         "dueDay": due_day,
         "dueWithTime": ms_to_iso(due_ms, tz),
-        "isOverdue": bool(not task.get("isDone") and ((due_day and due_day < today) or False)),
+        "isOverdue": bool(not task.get("isDone") and eff_day is not None and eff_day < today),
         "timeEstimateMinutes": _ms_to_min(task.get("timeEstimate")),
         "timeSpentMinutes": _ms_to_min(task.get("timeSpent")),
         "parentId": task.get("parentId"),
@@ -178,12 +191,12 @@ def list_tasks(
             continue
         if due:
             d = due.lower()
-            due_day = t.get("dueDay")
+            due_day = effective_due_day(t, tz)
             if d == "today" and due_day != today:
                 continue
             if d == "overdue" and not (due_day and due_day < today and not t.get("isDone")):
                 continue
-            if d == "unscheduled" and (due_day or t.get("dueWithTime")):
+            if d == "unscheduled" and due_day is not None:
                 continue
             if d not in ("today", "overdue", "unscheduled") and due_day != d:
                 continue
@@ -205,10 +218,7 @@ def today_view(state: dict[str, Any], *, tz: ZoneInfo, today: str, now_ms: int) 
         t = ents.get(tid) or {}
         if tid in seen or t.get("parentId"):
             continue
-        due_ms = t.get("dueWithTime")
-        if t.get("dueDay") == today or (
-            isinstance(due_ms, (int, float)) and ms_to_iso(due_ms, tz) and ms_to_iso(due_ms, tz)[:10] == today
-        ):
+        if effective_due_day(t, tz) == today:
             ordered.append(tid)
             seen.add(tid)
     todo, done = [], []
@@ -221,11 +231,8 @@ def today_view(state: dict[str, Any], *, tz: ZoneInfo, today: str, now_ms: int) 
         t = ents.get(tid) or {}
         if t.get("isDone") or t.get("parentId") or tid in seen:
             continue
-        due_day = t.get("dueDay")
-        due_ms = t.get("dueWithTime")
-        if (due_day and due_day < today) or (
-            isinstance(due_ms, (int, float)) and ms_to_iso(due_ms, tz) and ms_to_iso(due_ms, tz)[:10] < today
-        ):
+        due_day = effective_due_day(t, tz)
+        if due_day is not None and due_day < today:
             overdue.append(task_summary(state, t, tz=tz, today=today, include_notes=False))
     return {
         "today": today,
@@ -249,9 +256,7 @@ def planner_view(state: dict[str, Any], *, tz: ZoneInfo, today: str, days: int) 
             t = ents.get(tid) or {}
             if tid in seen or t.get("parentId") or t.get("isDone"):
                 continue
-            due_ms = t.get("dueWithTime")
-            due_iso = ms_to_iso(due_ms, tz) if isinstance(due_ms, (int, float)) else None
-            if t.get("dueDay") == d or (due_iso and due_iso[:10] == d):
+            if effective_due_day(t, tz) == d:
                 order.append(tid)
                 seen.add(tid)
         out[d] = [
