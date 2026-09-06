@@ -20,7 +20,7 @@ container registry with the same access control.
 - Tags: `main` (moving), `sha-<short sha>` (immutable), and for git tags
   `v<semver>`: `<version>`, `<major>.<minor>`, `latest`. A release is made by
   pushing a `v*` tag.
-- `docker-compose.yml` defaults to `ghcr.io/samuelb/superproductivity-sync-mcp:${SPMCP_TAG:-main}`
+- `docker-compose.yml` defaults to `ghcr.io/samuelb/superproductivity-sync-mcp:${IMAGE_TAG:-main}`
   and keeps `build: .` for local builds.
 
 ## Consequences

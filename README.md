@@ -78,7 +78,7 @@ git clone git@github.com:samuelb/superproductivity-sync-mcp.git && cd superprodu
 cp .env.example .env
 $EDITOR .env                      # Nextcloud credentials, sync folder, tokens
 openssl rand -hex 32              # -> MCP_AUTH_TOKENS
-docker compose pull && docker compose up -d      # SPMCP_TAG=v0.1.0 to pin a release
+docker compose pull && docker compose up -d      # IMAGE_TAG=v0.1.0 to pin a release
 docker compose logs -f sync-mcp
 curl -s http://<container>:8000/healthz   # from inside the proxy network
 ```
