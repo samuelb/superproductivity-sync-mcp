@@ -92,11 +92,15 @@ class ClientIdentity:
 
 
 class MutationContext:
-    """What a mutation sees: a private copy of the snapshot plus emit()."""
+    """What a mutation sees: a private copy of the snapshot plus emit().
 
-    def __init__(self, sync_file: SyncFile, tz: ZoneInfo, now_ms: int) -> None:
+    With ``copy_state=False`` the context shares the cached snapshot instead;
+    that variant is for read-only tools and must never be handed to a mutation.
+    """
+
+    def __init__(self, sync_file: SyncFile, tz: ZoneInfo, now_ms: int, *, copy_state: bool = True) -> None:
         self.sync_file = sync_file
-        self.state: dict[str, Any] = copy.deepcopy(sync_file.state)
+        self.state: dict[str, Any] = copy.deepcopy(sync_file.state) if copy_state else sync_file.state
         self.tz = tz
         self.now_ms = now_ms
         self.start_of_next_day_diff_ms = get_start_of_next_day_diff_ms(self.state.get("globalConfig"))
@@ -220,6 +224,10 @@ class SyncStore:
 
     def context_for(self, sf: SyncFile) -> MutationContext:
         return MutationContext(sf, self.tz, self.now_ms())
+
+    def read_context_for(self, sf: SyncFile) -> MutationContext:
+        """Context over the cached snapshot without copying it (read-only tools)."""
+        return MutationContext(sf, self.tz, self.now_ms(), copy_state=False)
 
     # --- writing ---------------------------------------------------------------
 

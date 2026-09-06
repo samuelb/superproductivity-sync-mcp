@@ -50,9 +50,8 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     )
 
     async def snapshot():
-        sf = await store.load()
-        ctx = store.context_for(sf)
-        return sf, ctx
+        """Read-only view of the (cached) snapshot; never pass it to store.mutate."""
+        return store.read_context_for(await store.load())
 
     def task_out(ctx, task: dict[str, Any]) -> dict[str, Any]:
         return q.task_summary(ctx.state, task, tz=ctx.tz, today=ctx.today, include_subtasks=True)
@@ -64,19 +63,19 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         description="High-level overview: today's counts, projects and tags with ids.",
     )
     async def get_overview() -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return q.overview(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
 
     @server.tool(annotations=RO, description="List projects (id, title, task counts).")
     async def list_projects(
         include_archived: Annotated[bool, Field(description="Include archived projects")] = False,
     ) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return {"projects": q.list_projects(ctx.state, include_archived=include_archived)}
 
     @server.tool(annotations=RO, description="List tags (id, title, color, task count).")
     async def list_tags() -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return {"tags": q.list_tags(ctx.state)}
 
     @server.tool(
@@ -95,7 +94,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         include_subtasks: Annotated[bool, Field(description="Also list sub-tasks")] = False,
         limit: Annotated[int, Field(ge=1, le=500)] = 100,
     ) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         tasks = q.list_tasks(
             ctx.state,
             tz=ctx.tz,
@@ -112,7 +111,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
 
     @server.tool(annotations=RO, description="Full details of one task including notes and sub-tasks.")
     async def get_task(task_id: str) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         task = m.require_task(ctx.state, task_id)
         return task_out(ctx, task)
 
@@ -121,17 +120,17 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         description="Today's plan: open tasks in the user's order, tasks done today, and overdue tasks.",
     )
     async def get_today() -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return q.today_view(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
 
     @server.tool(annotations=RO, description="Tasks planned per day for the next N days (starting today).")
     async def get_planner(days: Annotated[int, Field(ge=1, le=60)] = 7) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return q.planner_view(ctx.state, tz=ctx.tz, today=ctx.today, days=days)
 
     @server.tool(annotations=RO, description="List notes, optionally only those of one project.")
     async def list_notes(project_id: str | None = None) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return {"notes": q.list_notes(ctx.state, project_id=project_id, tz=ctx.tz)}
 
     @server.tool(
@@ -139,12 +138,12 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         description="Search tasks, projects, tags and notes by text. Returns ids usable with `fetch`.",
     )
     async def search(query: str) -> dict[str, Any]:
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         return {"results": q.search(ctx.state, query, tz=ctx.tz, today=ctx.today)}
 
     @server.tool(annotations=RO, description="Fetch one document returned by `search` (e.g. 'task:<id>').")
     async def fetch(id: str) -> dict[str, Any]:  # noqa: A002 (name required by ChatGPT connectors)
-        sf, ctx = await snapshot()
+        ctx = await snapshot()
         try:
             return q.fetch(ctx.state, id, tz=ctx.tz, today=ctx.today)
         except KeyError as e:
@@ -158,7 +157,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         refresh: Annotated[bool, Field(description="Bypass the short-lived cache")] = False,
     ) -> dict[str, Any]:
         sf = await store.load(force=refresh)
-        ctx = store.context_for(sf)
+        ctx = store.read_context_for(sf)
         data = sf.data
         return {
             "clientId": store.identity.client_id,

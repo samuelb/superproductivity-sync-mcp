@@ -137,3 +137,13 @@ async def test_probe_explains_wrong_user_id(fake_dav, tmp_path):
     fake_dav.propfind_root_missing = True
     with pytest.raises(NotFound, match="NEXTCLOUD_USER"):
         await store.probe()
+
+
+async def test_read_context_shares_snapshot_and_mutation_context_copies(store):
+    sf = await store.load()
+    ro = store.read_context_for(sf)
+    assert ro.state is sf.state  # no deep copy for reads
+    rw = store.context_for(sf)
+    assert rw.state is not sf.state and rw.state == sf.state
+    rw.state["task"]["entities"]["t1"]["title"] = "changed"
+    assert sf.state["task"]["entities"]["t1"]["title"] == "Write report"
