@@ -21,3 +21,4 @@ mark the old one superseded in the same commit. Use `0000-template.md`.
 | [0006](0006-schema-version-follows-remote-file.md) | Stamp operations with the schema version of the remote file | Accepted |
 | [0007](0007-unsupported-formats.md) | Rejected — split-file format, SuperSync, initial file creation | Accepted |
 | [0008](0008-deployment-docker-behind-proxy.md) | Deployment as a non-root container behind an external reverse proxy | Accepted |
+| [0009](0009-release-images-on-ghcr.md) | Build and publish container images with GitHub Actions to GHCR | Accepted |

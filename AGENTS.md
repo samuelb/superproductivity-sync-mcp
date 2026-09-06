@@ -28,7 +28,8 @@ sync folder via WebDAV. Python 3.12, `mcp` SDK 2.x, streamable HTTP.
 ## Commands
 
 - `uv sync --extra dev` — install. `uv run pytest` — tests. `uv run ruff check src tests && uv run ruff format --check src tests` — lint.
-- `uv run spmcp` — run locally (needs `.env`). `docker compose up -d --build` — deploy.
+- `uv run spmcp` — run locally (needs `.env`). `docker compose pull && docker compose up -d` — deploy the published image; `--build` builds locally.
+- CI (`.github/workflows/ci.yml`) runs lint+tests and publishes `ghcr.io/samuelb/spmcp` (see ADR-0009). Keep `uv.lock` current (`--frozen`).
 
 ## Rules
 

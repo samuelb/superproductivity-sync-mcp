@@ -5,8 +5,11 @@
 # to spmcp:8000 on the shared `proxy` network. See README.md for examples.
 services:
   spmcp:
+    # Published by .github/workflows/ci.yml. Override the tag with SPMCP_TAG
+    # (e.g. a release `v0.1.0` or `sha-<commit>`). Private packages need
+    # `docker login ghcr.io` first. To build locally instead: `docker compose build`.
+    image: ghcr.io/samuelb/spmcp:${SPMCP_TAG:-main}
     build: .
-    image: spmcp:latest
     restart: unless-stopped
     env_file: .env
     volumes:
