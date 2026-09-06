@@ -29,6 +29,8 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        # The access log would record /t/<token>/mcp request targets verbatim.
+        access_log=False,
         proxy_headers=True,
         forwarded_allow_ips="*",
         timeout_keep_alive=75,

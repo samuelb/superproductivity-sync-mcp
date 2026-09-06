@@ -80,3 +80,16 @@ async def test_mcp_end_to_end(store, fake_dav):
                 assert res.structured_content["dueDay"] == "2026-09-07"
                 res = await session.call_tool("get_task", {"task_id": "missing"})
                 assert res.is_error
+
+
+def test_uvicorn_access_log_disabled(monkeypatch):
+    """Path tokens (/t/<token>/mcp) must never reach the access log."""
+    import superproductivity_sync_mcp.__main__ as entry
+
+    captured = {}
+    monkeypatch.setattr(entry.uvicorn, "run", lambda app, **kw: captured.update(kw))
+    monkeypatch.setattr(entry, "create_app", lambda settings: object())
+    for k in ("NEXTCLOUD_URL", "NEXTCLOUD_USER", "NEXTCLOUD_PASSWORD", "MCP_AUTH_TOKENS"):
+        monkeypatch.setenv(k, "https://cloud.example.com" if k == "NEXTCLOUD_URL" else "secret-token-1234567")
+    entry.main()
+    assert captured["access_log"] is False

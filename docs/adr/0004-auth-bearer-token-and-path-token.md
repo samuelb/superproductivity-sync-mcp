@@ -16,7 +16,9 @@ does not support OAuth. TLS is terminated by the reverse proxy.
 - Static bearer tokens (`MCP_AUTH_TOKENS`, ≥ 16 chars, constant-time compare),
   several allowed so each client gets its own.
 - Optional `MCP_ALLOW_TOKEN_IN_PATH`: `/t/<token>/...` is rewritten to `/...`
-  after validation. Off by default; documented as a password-in-URL.
+  after validation. Off by default; documented as a password-in-URL. Because
+  the request target would appear verbatim in access logs, uvicorn's access log
+  is disabled; the reverse proxy's log is the operator's responsibility.
 - `MCP_AUTH_DISABLED=true` exists for proxies that authenticate themselves.
 - The server refuses to start with no token unless auth is explicitly disabled.
 - `/healthz` is unauthenticated and reveals only the sync client id.

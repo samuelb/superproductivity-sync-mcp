@@ -134,7 +134,9 @@ claude mcp add --transport http super-productivity https://mcp.example.com/mcp \
 ChatGPT supports only OAuth or "No authentication", so set
 `MCP_ALLOW_TOKEN_IN_PATH=true` and use the URL `https://mcp.example.com/t/<token>/mcp`
 with authentication set to *None*. The connector requires `search` and `fetch`
-tools, which this server provides. Treat that URL like a password.
+tools, which this server provides. Treat that URL like a password: the server
+keeps it out of its own access log, but your reverse proxy will log it unless
+you configure it not to.
 
 **Hermes Agent** (`~/.hermes/config.yaml`):
 
