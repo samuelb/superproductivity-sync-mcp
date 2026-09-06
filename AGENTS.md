@@ -38,6 +38,9 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
   snapshot via `reducers.py`, with a test in `tests/test_reducers.py`.
   Verify against the Super Productivity source of the targeted version
   (currently 18.21.x) — do not guess reducer behaviour.
+- Op payloads must carry entities as they were *before* the reducer ran (what
+  the app dispatches). The reducer mirror mutates state entities in place, so
+  `copy.deepcopy` any entity you put into a payload before calling `reducers.*`.
 - Never write `None` where the app writes `undefined`; use `reducers.UNSET`.
 - Mutations may be re-run on write conflicts: keep them pure functions of `ctx`.
 - Do not add tools that emit full-state operations or touch archives.

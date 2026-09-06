@@ -126,3 +126,24 @@ def test_project_and_tag_and_note_flow():
         "projectId": "p1",
         "isPinnedToToday": False,
     }
+
+
+def test_emitted_payload_is_frozen_before_reducer_runs():
+    """Ops must carry the pre-reducer entity, like the app's dispatched action."""
+    ctx = ctx_for()
+    before = dict(ctx.state["task"]["entities"]["t2"])
+    m.schedule_task(ctx, "t2", day="tomorrow")
+    payload_task = ctx.ops[0].action_payload["task"]
+    assert payload_task is not ctx.state["task"]["entities"]["t2"]
+    assert payload_task["dueDay"] == before["dueDay"] == "2026-09-09"
+    assert ctx.state["task"]["entities"]["t2"]["dueDay"] == "2026-09-08"
+
+    ctx = ctx_for()
+    m.schedule_task(ctx, "t1", day="today", time_hhmm="10:00")
+    assert ctx.ops[0].action_payload["task"]["dueDay"] == "2026-09-07"
+    assert "dueDay" not in ctx.state["task"]["entities"]["t1"]
+
+    ctx = ctx_for()
+    m.move_task_to_project(ctx, "t2", "INBOX_PROJECT")
+    assert ctx.ops[0].action_payload["task"]["projectId"] == "p1"
+    assert ctx.state["task"]["entities"]["t2"]["projectId"] == "INBOX_PROJECT"

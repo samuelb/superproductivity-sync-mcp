@@ -3,6 +3,7 @@ snapshot and emit the matching operation(s)."""
 
 from __future__ import annotations
 
+import copy
 from typing import TYPE_CHECKING, Any
 
 from . import reducers as r
@@ -301,6 +302,9 @@ def schedule_task(ctx: MutationContext, task_id: str, *, day: str, time_hhmm: st
     if task.get("parentId"):
         raise MutationError("Sub-tasks cannot be scheduled; schedule the parent task")
     resolved = resolve_day(day, ctx.today)
+    # The op must carry the task as the app would have dispatched it, i.e. as it
+    # was *before* the reducer ran; the reducer mirror mutates `task` in place.
+    dispatched = copy.deepcopy(task)
     if time_hhmm:
         due_ms = day_time_to_ms(resolved, time_hhmm, ctx.tz)
         is_for_today = db_date_str(due_ms - ctx.start_of_next_day_diff_ms, ctx.tz) == ctx.today
@@ -308,11 +312,11 @@ def schedule_task(ctx: MutationContext, task_id: str, *, day: str, time_hhmm: st
         ctx.emit(
             "scheduleTaskWithTime",
             task_id,
-            {"task": task, "dueWithTime": due_ms, "isMoveToBacklog": False},
+            {"task": dispatched, "dueWithTime": due_ms, "isMoveToBacklog": False},
         )
     else:
         r.plan_task_for_day(state, task, resolved, is_add_to_top=False, today=ctx.today)
-        ctx.emit("planTaskForDay", task_id, {"task": task, "day": resolved, "isAddToTop": False})
+        ctx.emit("planTaskForDay", task_id, {"task": dispatched, "day": resolved, "isAddToTop": False})
     return require_task(state, task_id)
 
 
@@ -335,15 +339,16 @@ def move_task_to_project(ctx: MutationContext, task_id: str, project_id: str) ->
     if task.get("projectId") == project_id:
         raise MutationError("Task is already in that project")
     tws = task_with_subtasks(state, task)
+    dispatched = copy.deepcopy(tws)  # pre-reducer snapshot, see schedule_task
     r.move_to_other_project(state, tws, project_id)
-    ctx.emit("moveToOtherProject", task_id, {"task": tws, "targetProjectId": project_id})
+    ctx.emit("moveToOtherProject", task_id, {"task": dispatched, "targetProjectId": project_id})
     return require_task(state, task_id)
 
 
 def delete_task(ctx: MutationContext, task_id: str) -> dict[str, Any]:
     state = ctx.state
     task = require_task(state, task_id)
-    tws = task_with_subtasks(state, task)
+    tws = copy.deepcopy(task_with_subtasks(state, task))  # pre-reducer snapshot, see schedule_task
     r.delete_task(state, tws)
     ctx.emit("deleteTask", task_id, {"task": tws})
     return {"deleted": task_id, "deletedSubTasks": [s["id"] for s in tws["subTasks"]]}
