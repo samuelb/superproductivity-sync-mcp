@@ -10,7 +10,7 @@ The user runs a reverse proxy already; MCP clients require HTTPS.
 
 ## Decision
 
-- Multi-stage image (`uv sync --frozen`), `python:3.12-slim`, non-root user,
+- Multi-stage image (`uv sync --frozen`), `python:3.14-slim`, non-root user,
   `tzdata` installed, `/data` volume for the client identity, health check on
   `/healthz`.
 - Compose publishes **no host port**; the service joins a `proxy` network. A

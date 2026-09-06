@@ -9,7 +9,7 @@ in the same commit.
 `spmcp` is an MCP (Model Context Protocol) server for Super Productivity with
 Nextcloud sync enabled. It acts as an additional sync client: it reads and
 rewrites `sync-data.json` (the v2 file-based operation log) in the Nextcloud
-sync folder via WebDAV. Python 3.12, `mcp` SDK 2.x, streamable HTTP.
+sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamable HTTP.
 
 ## Layout
 

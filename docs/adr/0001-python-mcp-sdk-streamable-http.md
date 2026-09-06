@@ -13,7 +13,7 @@ easy to run as a small container.
 
 ## Decision
 
-- Python 3.12, `mcp>=2.1,<3` (`MCPServer`, formerly FastMCP), `httpx`, `uvicorn`.
+- Python 3.14 (current stable; 3.15 was still a release candidate), `mcp>=2.1,<3` (`MCPServer`, formerly FastMCP), `httpx`, `uvicorn`.
 - Transport: streamable HTTP mounted at `/mcp`, `stateless_http=True`,
   `json_response=True`. Stateless mode needs no sticky sessions and survives
   proxy restarts; JSON responses avoid long-lived SSE streams through proxies.
