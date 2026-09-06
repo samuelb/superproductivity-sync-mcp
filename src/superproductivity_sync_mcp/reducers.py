@@ -655,10 +655,6 @@ def add_tag(state: dict[str, Any], tag: dict[str, Any]) -> None:
             tag_tree.append({"k": "t", "id": tag["id"]})
 
 
-def update_tag(state: dict[str, Any], tag_id: str, changes: dict[str, Any]) -> None:
-    update_one(slice_(state, "tag"), tag_id, changes)
-
-
 def add_note(state: dict[str, Any], note: dict[str, Any]) -> None:
     notes = slice_(state, "note")
     if note["id"] in notes["entities"]:

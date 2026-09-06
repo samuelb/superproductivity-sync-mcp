@@ -20,23 +20,6 @@ class SyncFormatError(Exception):
     pass
 
 
-def compare_clocks(a: VectorClock, b: VectorClock) -> str:
-    a_greater = b_greater = False
-    for key in set(a) | set(b):
-        av, bv = a.get(key, 0), b.get(key, 0)
-        if av > bv:
-            a_greater = True
-        if bv > av:
-            b_greater = True
-        if a_greater and b_greater:
-            return "CONCURRENT"
-    if a_greater:
-        return "GREATER_THAN"
-    if b_greater:
-        return "LESS_THAN"
-    return "EQUAL"
-
-
 def merge_clocks(a: VectorClock, b: VectorClock) -> VectorClock:
     merged = dict(a)
     for k, v in b.items():

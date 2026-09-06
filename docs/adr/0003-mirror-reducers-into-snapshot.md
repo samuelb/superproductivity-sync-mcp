@@ -29,7 +29,7 @@ key, the JSON equivalent of NgRx writing `undefined`):
 | `[Task Shared] unscheduleTask` (HSX) | `handleUnScheduleTask` + planner removal |
 | `[Task Shared] moveToOtherProject` (HMP) | `handleMoveToOtherProject` + section cleanup |
 | `[Project] Add/Update/Archive/Unarchive Project` (PA/PU/PX/PR) | project reducer |
-| `[Tag] Add/Update Tag` (GA/GU) | tag reducer + menu-tree `addTag` |
+| `[Tag] Add Tag` (GA) | tag reducer + menu-tree `addTag` |
 | `[Note] Add/Update/Delete Note` (NA/NU/ND) | note reducer + project `noteIds` |
 
 Field clearing never travels as `undefined` in a payload (JSON drops it); we

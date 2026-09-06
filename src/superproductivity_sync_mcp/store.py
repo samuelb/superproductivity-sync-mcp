@@ -107,14 +107,8 @@ class MutationContext:
         self.today = today_str(now_ms, tz, self.start_of_next_day_diff_ms)
         self.ops: list[PendingOp] = []
 
-    def emit(
-        self,
-        action: str,
-        entity_id: str,
-        action_payload: dict[str, Any],
-        entity_ids: list[str] | None = None,
-    ) -> None:
-        self.ops.append(PendingOp(action, entity_id, action_payload, entity_ids))
+    def emit(self, action: str, entity_id: str, action_payload: dict[str, Any]) -> None:
+        self.ops.append(PendingOp(action, entity_id, action_payload))
 
 
 def _strip_local_only_sync_settings(state: dict[str, Any]) -> None:
@@ -250,7 +244,8 @@ class SyncStore:
         combined = [*sf.recent_ops, *compact_ops]
         merged_ops = combined[-MAX_RECENT_OPS:]
         if len(combined) > len(merged_ops):
-            log.warning("Trimmed %d old ops from recentOps", len(combined) - len(merged_ops))
+            # Normal steady state once the buffer is full (the app trims the same way).
+            log.debug("Trimmed %d old op(s) from recentOps", len(combined) - len(merged_ops))
         _strip_local_only_sync_settings(ctx.state)
         envelope: dict[str, Any] = {
             "version": FILE_VERSION,

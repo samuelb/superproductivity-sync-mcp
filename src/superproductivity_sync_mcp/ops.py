@@ -44,13 +44,10 @@ ACTIONS: dict[str, ActionSpec] = {
     "archiveProject": ActionSpec("PX", "[Project] Archive Project", OP_UPDATE, "PROJECT"),
     "unarchiveProject": ActionSpec("PR", "[Project] Unarchive Project", OP_UPDATE, "PROJECT"),
     "addTag": ActionSpec("GA", "[Tag] Add Tag", OP_CREATE, "TAG"),
-    "updateTag": ActionSpec("GU", "[Tag] Update Tag", OP_UPDATE, "TAG"),
     "addNote": ActionSpec("NA", "[Note] Add Note", OP_CREATE, "NOTE"),
     "updateNote": ActionSpec("NU", "[Note] Update Note", OP_UPDATE, "NOTE"),
     "deleteNote": ActionSpec("ND", "[Note] Delete Note", OP_DELETE, "NOTE"),
 }
-
-CODE_TO_ACTION_TYPE = {spec.code: spec.action_type for spec in ACTIONS.values()}
 
 # Payload keys per entity type (entity registry) used by the app's Checkpoint A.
 PAYLOAD_KEYS = {
@@ -67,7 +64,6 @@ class PendingOp:
     action: str
     entity_id: str
     action_payload: dict[str, Any]
-    entity_ids: list[str] | None = None
 
 
 def build_compact_op(
@@ -80,14 +76,13 @@ def build_compact_op(
     sync_version: int,
 ) -> dict[str, Any]:
     spec = ACTIONS[pending.action]
-    entity_ids = pending.entity_ids or [pending.entity_id]
     op = {
         "id": uuid7(timestamp_ms),
         "a": spec.code,
         "o": spec.op_type,
         "e": spec.entity_type,
         "d": pending.entity_id,
-        "ds": list(entity_ids),
+        "ds": [pending.entity_id],
         "p": {"actionPayload": pending.action_payload, "entityChanges": []},
         "c": client_id,
         "v": dict(vector_clock),
