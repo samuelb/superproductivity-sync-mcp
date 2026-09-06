@@ -1,28 +1,28 @@
-# Super Productivity MCP server behind a reverse proxy.
+# superproductivity-sync-mcp behind a reverse proxy.
 #
-# The `spmcp` service is NOT published on a host port on purpose: your
+# The `sync-mcp` service is NOT published on a host port on purpose: your
 # reverse proxy (Traefik, Caddy, nginx, ...) terminates TLS and forwards
-# to spmcp:8000 on the shared `proxy` network. See README.md for examples.
+# to sync-mcp:8000 on the shared `proxy` network. See README.md for examples.
 services:
-  spmcp:
+  sync-mcp:
     # Published by .github/workflows/ci.yml. Override the tag with SPMCP_TAG
     # (e.g. a release `v0.1.0` or `sha-<commit>`). Private packages need
     # `docker login ghcr.io` first. To build locally instead: `docker compose build`.
-    image: ghcr.io/samuelb/spmcp:${SPMCP_TAG:-main}
+    image: ghcr.io/samuelb/superproductivity-sync-mcp:${SPMCP_TAG:-main}
     build: .
     restart: unless-stopped
     env_file: .env
     volumes:
-      - spmcp-data:/data
+      - sync-mcp-data:/data
     networks:
       - proxy
     # --- Traefik example (uncomment and adapt) ---------------------------
     # labels:
     #   traefik.enable: "true"
-    #   traefik.http.routers.spmcp.rule: "Host(`mcp.example.com`)"
-    #   traefik.http.routers.spmcp.entrypoints: "websecure"
-    #   traefik.http.routers.spmcp.tls.certresolver: "letsencrypt"
-    #   traefik.http.services.spmcp.loadbalancer.server.port: "8000"
+    #   traefik.http.routers.sync-mcp.rule: "Host(`mcp.example.com`)"
+    #   traefik.http.routers.sync-mcp.entrypoints: "websecure"
+    #   traefik.http.routers.sync-mcp.tls.certresolver: "letsencrypt"
+    #   traefik.http.services.sync-mcp.loadbalancer.server.port: "8000"
 
   # --- Optional bundled Caddy reverse proxy (profile: caddy) --------------
   # docker compose --profile caddy up -d
@@ -43,7 +43,7 @@ services:
       - proxy
 
 volumes:
-  spmcp-data:
+  sync-mcp-data:
   caddy-data:
   caddy-config:
 

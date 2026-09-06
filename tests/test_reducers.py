@@ -1,5 +1,5 @@
-from spmcp import reducers as r
-from spmcp.mutations import default_task
+from superproductivity_sync_mcp import reducers as r
+from superproductivity_sync_mcp.mutations import default_task
 
 from .conftest import base_state
 

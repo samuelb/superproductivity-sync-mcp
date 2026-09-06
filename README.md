@@ -1,4 +1,4 @@
-# spmcp — Super Productivity MCP server
+# superproductivity-sync-mcp
 
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents (ChatGPT,
 Claude, Hermes Agent, Pebble Index, any other MCP client) read and update your
@@ -67,31 +67,31 @@ or tags (use the app for those).
 ## Deployment
 
 Images are built by GitHub Actions and published to the GitHub Container
-Registry as `ghcr.io/samuelb/spmcp` (tags: `main` for the latest commit on
+Registry as `ghcr.io/samuelb/superproductivity-sync-mcp` (tags: `main` for the latest commit on
 `main`, `sha-<commit>`, and `v1.2.3` / `1.2` / `latest` for release tags). The
 package inherits the repository's private visibility, so the deployment host
 needs a login with a token that has `read:packages`:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
-git clone git@github.com:samuelb/spmcp.git && cd spmcp
+git clone git@github.com:samuelb/superproductivity-sync-mcp.git && cd superproductivity-sync-mcp
 cp .env.example .env
 $EDITOR .env                      # Nextcloud credentials, sync folder, tokens
 openssl rand -hex 32              # -> MCP_AUTH_TOKENS
 docker compose pull && docker compose up -d      # SPMCP_TAG=v0.1.0 to pin a release
-docker compose logs -f spmcp
+docker compose logs -f sync-mcp
 curl -s http://<container>:8000/healthz   # from inside the proxy network
 ```
 
 To build locally instead of pulling: `docker compose up -d --build`.
 
-The `spmcp` service publishes no host port; attach your proxy to the `proxy`
-network and forward to `spmcp:8000`. Examples:
+The `sync-mcp` service publishes no host port; attach your proxy to the `proxy`
+network and forward to `sync-mcp:8000`. Examples:
 
 * **Traefik**: uncomment the labels in `docker-compose.yml`.
 * **Caddy** (bundled, optional): `MCP_PUBLIC_HOST=mcp.example.com docker compose --profile caddy up -d`
   (uses `deploy/Caddyfile`).
-* **nginx**: `proxy_pass http://spmcp:8000; proxy_buffering off; proxy_read_timeout 600s;`
+* **nginx**: `proxy_pass http://sync-mcp:8000; proxy_buffering off; proxy_read_timeout 600s;`
   plus the usual `Host`/`X-Forwarded-*` headers.
 
 The MCP endpoint is `https://<host>/mcp` (streamable HTTP, stateless, JSON
@@ -159,7 +159,7 @@ Any other client: streamable-HTTP transport, URL `/mcp`, bearer header.
 uv sync --extra dev
 uv run pytest
 uv run ruff check src tests && uv run ruff format --check src tests
-uv run spmcp                 # needs a .env
+uv run superproductivity-sync-mcp   # needs a .env
 ```
 
 Design decisions live in `docs/adr/` — read them before touching the wire

@@ -1,9 +1,9 @@
 import pytest
 
-from spmcp import mutations as m
-from spmcp.codec import PrefixFlags
-from spmcp.ops import validate_compact_op
-from spmcp.store import MutationContext, SyncFile
+from superproductivity_sync_mcp import mutations as m
+from superproductivity_sync_mcp.codec import PrefixFlags
+from superproductivity_sync_mcp.ops import validate_compact_op
+from superproductivity_sync_mcp.store import MutationContext, SyncFile
 
 from .conftest import TZ, base_envelope
 
@@ -88,7 +88,7 @@ def test_delete_task_payload_has_subtasks_and_passes_checkpoint_a():
     assert out == {"deleted": "t1", "deletedSubTasks": ["s1"]}
     op = ctx.ops[0]
     assert op.action == "deleteTask" and op.action_payload["task"]["subTasks"][0]["id"] == "s1"
-    from spmcp.ops import build_compact_op
+    from superproductivity_sync_mcp.ops import build_compact_op
 
     compact = build_compact_op(
         op,

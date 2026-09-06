@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-07
-- **Sources:** `src/spmcp/store.py` (`_build_envelope`); app
+- **Sources:** `src/superproductivity_sync_mcp/store.py` (`_build_envelope`); app
   `remote-op-block.util.ts`, `packages/shared-schema/src/schema-version.ts`
 
 ## Context

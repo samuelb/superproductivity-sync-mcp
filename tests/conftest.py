@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from spmcp import codec
-from spmcp.store import ClientIdentity, SyncStore
-from spmcp.webdav import NextcloudDav
+from superproductivity_sync_mcp import codec
+from superproductivity_sync_mcp.store import ClientIdentity, SyncStore
+from superproductivity_sync_mcp.webdav import NextcloudDav
 
 from .fake_dav import FakeDav, make_app
 

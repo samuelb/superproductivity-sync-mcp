@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-07
-- **Sources:** `src/spmcp/store.py`, `src/spmcp/webdav.py`; app
+- **Sources:** `src/superproductivity_sync_mcp/store.py`, `src/superproductivity_sync_mcp/webdav.py`; app
   `file-based-sync-adapter.service.ts` (`_uploadOps`, `_uploadWithMismatchFallback`),
   `packages/sync-providers/src/file-based/webdav/webdav-api.ts`
 

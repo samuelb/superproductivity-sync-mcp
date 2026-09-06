@@ -3,8 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-09-07
 - **Sources:** Super Productivity 18.21 source (`src/app/op-log/**`,
-  `packages/sync-providers/src/file-based-sync-data.ts`), `src/spmcp/store.py`,
-  `src/spmcp/syncfile.py`, `src/spmcp/ops.py`
+  `packages/sync-providers/src/file-based-sync-data.ts`), `src/superproductivity_sync_mcp/store.py`,
+  `src/superproductivity_sync_mcp/syncfile.py`, `src/superproductivity_sync_mcp/ops.py`
 
 ## Context
 

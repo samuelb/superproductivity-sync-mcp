@@ -1,5 +1,5 @@
 [project]
-name = "spmcp"
+name = "superproductivity-sync-mcp"
 version = "0.1.0"
 description = "MCP server for Super Productivity: reads and updates the Nextcloud sync file (sync-data.json) as a peer sync client."
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-spmcp = "spmcp.__main__:main"
+superproductivity-sync-mcp = "superproductivity_sync_mcp.__main__:main"
 
 [project.optional-dependencies]
 dev = [
@@ -31,7 +31,7 @@ requires = ["hatchling>=1.32"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/spmcp"]
+packages = ["src/superproductivity_sync_mcp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

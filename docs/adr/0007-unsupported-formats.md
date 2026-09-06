@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (records rejections)
 - **Date:** 2026-09-07
-- **Sources:** `src/spmcp/syncfile.py` (`validate_envelope`), `src/spmcp/store.py`
+- **Sources:** `src/superproductivity_sync_mcp/syncfile.py` (`validate_envelope`), `src/superproductivity_sync_mcp/store.py`
 
 ## Context
 

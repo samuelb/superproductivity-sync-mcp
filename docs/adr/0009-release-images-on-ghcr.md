@@ -15,12 +15,12 @@ container registry with the same access control.
 - One workflow (`CI`): a `test` job (ruff, pytest via uv, frozen lockfile) and
   an `image` job that runs only after tests pass and only for pushes (never for
   pull requests from forks).
-- Images go to `ghcr.io/samuelb/spmcp`, multi-arch (`linux/amd64`,
+- Images go to `ghcr.io/samuelb/superproductivity-sync-mcp`, multi-arch (`linux/amd64`,
   `linux/arm64`), authenticated with the workflow's `GITHUB_TOKEN`.
 - Tags: `main` (moving), `sha-<short sha>` (immutable), and for git tags
   `v<semver>`: `<version>`, `<major>.<minor>`, `latest`. A release is made by
   pushing a `v*` tag.
-- `docker-compose.yml` defaults to `ghcr.io/samuelb/spmcp:${SPMCP_TAG:-main}`
+- `docker-compose.yml` defaults to `ghcr.io/samuelb/superproductivity-sync-mcp:${SPMCP_TAG:-main}`
   and keeps `build: .` for local builds.
 
 ## Consequences

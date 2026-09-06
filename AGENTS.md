@@ -6,30 +6,30 @@ in the same commit.
 
 ## Project
 
-`spmcp` is an MCP (Model Context Protocol) server for Super Productivity with
+`superproductivity-sync-mcp` (Python package `superproductivity_sync_mcp`) is an MCP (Model Context Protocol) server for Super Productivity with
 Nextcloud sync enabled. It acts as an additional sync client: it reads and
 rewrites `sync-data.json` (the v2 file-based operation log) in the Nextcloud
 sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamable HTTP.
 
 ## Layout
 
-- `src/spmcp/config.py` — settings from env/.env (`Settings`).
-- `src/spmcp/webdav.py` — Nextcloud WebDAV client (GET/PUT with `If-Match`, PROPFIND).
-- `src/spmcp/codec.py` — `pf_[C][E]2__` prefix, gzip+base64, AES-GCM/Argon2id.
-- `src/spmcp/syncfile.py` — envelope model, vector clocks, constants.
-- `src/spmcp/ops.py` — compact operation records and the action-code registry.
-- `src/spmcp/reducers.py` — port of the app's reducers applied to the snapshot.
-- `src/spmcp/mutations.py` — tool-level changes: validate, reduce, emit op.
-- `src/spmcp/store.py` — download → mutate → conditional upload with retry.
-- `src/spmcp/queries.py` — read-only views. `server.py` — MCP tools. `app.py` — ASGI app + auth.
+- `src/superproductivity_sync_mcp/config.py` — settings from env/.env (`Settings`).
+- `src/superproductivity_sync_mcp/webdav.py` — Nextcloud WebDAV client (GET/PUT with `If-Match`, PROPFIND).
+- `src/superproductivity_sync_mcp/codec.py` — `pf_[C][E]2__` prefix, gzip+base64, AES-GCM/Argon2id.
+- `src/superproductivity_sync_mcp/syncfile.py` — envelope model, vector clocks, constants.
+- `src/superproductivity_sync_mcp/ops.py` — compact operation records and the action-code registry.
+- `src/superproductivity_sync_mcp/reducers.py` — port of the app's reducers applied to the snapshot.
+- `src/superproductivity_sync_mcp/mutations.py` — tool-level changes: validate, reduce, emit op.
+- `src/superproductivity_sync_mcp/store.py` — download → mutate → conditional upload with retry.
+- `src/superproductivity_sync_mcp/queries.py` — read-only views. `server.py` — MCP tools. `app.py` — ASGI app + auth.
 - `tests/` — pytest; `tests/fake_dav.py` is an in-process Nextcloud stand-in.
 - `docs/adr/` — decisions (index: `docs/adr/README.md`).
 
 ## Commands
 
 - `uv sync --extra dev` — install. `uv run pytest` — tests. `uv run ruff check src tests && uv run ruff format --check src tests` — lint.
-- `uv run spmcp` — run locally (needs `.env`). `docker compose pull && docker compose up -d` — deploy the published image; `--build` builds locally.
-- CI (`.github/workflows/ci.yml`) runs lint+tests and publishes `ghcr.io/samuelb/spmcp` (see ADR-0009). Keep `uv.lock` current (`--frozen`). Dependabot (`.github/dependabot.yml`) opens weekly PRs for actions, the Docker base image and Python deps; merge them after CI passes.
+- `uv run superproductivity-sync-mcp` — run locally (needs `.env`). `docker compose pull && docker compose up -d` — deploy the published image; `--build` builds locally.
+- CI (`.github/workflows/ci.yml`) runs lint+tests and publishes `ghcr.io/samuelb/superproductivity-sync-mcp` (see ADR-0009). Keep `uv.lock` current (`--frozen`). Dependabot (`.github/dependabot.yml`) opens weekly PRs for actions, the Docker base image and Python deps; merge them after CI passes.
 
 ## Rules
 

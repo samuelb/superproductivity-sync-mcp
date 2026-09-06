@@ -1,6 +1,6 @@
 import pytest
 
-from spmcp import codec
+from superproductivity_sync_mcp import codec
 
 
 def test_prefix_roundtrip_plain():

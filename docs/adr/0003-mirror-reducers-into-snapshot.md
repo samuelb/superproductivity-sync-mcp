@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-07
-- **Sources:** `src/spmcp/reducers.py`, `src/spmcp/mutations.py`, app files
+- **Sources:** `src/superproductivity_sync_mcp/reducers.py`, `src/superproductivity_sync_mcp/mutations.py`, app files
   `root-store/meta/task-shared-meta-reducers/*.ts`, `features/tasks/store/task.reducer*.ts`,
   `features/planner/store/planner.reducer.ts`, `features/menu-tree/store/menu-tree.reducer.ts`
 

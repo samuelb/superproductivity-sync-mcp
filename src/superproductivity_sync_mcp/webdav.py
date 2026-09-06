@@ -81,7 +81,7 @@ class NextcloudDav:
             timeout=timeout,
             follow_redirects=False,
             transport=transport,
-            headers={"User-Agent": "spmcp/0.1 (Super Productivity MCP)"},
+            headers={"User-Agent": "superproductivity-sync-mcp/0.1"},
         )
 
     async def aclose(self) -> None:

@@ -80,7 +80,7 @@ class TokenAuthMiddleware:
         response = JSONResponse(
             {"error": "unauthorized", "detail": "Provide a valid bearer token"},
             status_code=401,
-            headers={"WWW-Authenticate": 'Bearer realm="spmcp"'},
+            headers={"WWW-Authenticate": 'Bearer realm="superproductivity-sync-mcp"'},
         )
         await response(scope, receive, send)
 

@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from spmcp.app import TokenAuthMiddleware
+from superproductivity_sync_mcp.app import TokenAuthMiddleware
 
 
 async def _echo(scope, receive, send):
@@ -43,8 +43,8 @@ async def test_mcp_end_to_end(store, fake_dav):
     from mcp.client.session import ClientSession
     from mcp.client.streamable_http import streamable_http_client
 
-    from spmcp.app import create_app
-    from spmcp.config import Settings
+    from superproductivity_sync_mcp.app import create_app
+    from superproductivity_sync_mcp.config import Settings
 
     settings = Settings(
         nextcloud_url="https://cloud.example.com",

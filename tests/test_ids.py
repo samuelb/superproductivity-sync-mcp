@@ -1,6 +1,6 @@
 import re
 
-from spmcp.ids import generate_client_id, is_valid_client_id, nanoid, uuid7
+from superproductivity_sync_mcp.ids import generate_client_id, is_valid_client_id, nanoid, uuid7
 
 
 def test_nanoid():

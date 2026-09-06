@@ -1,4 +1,4 @@
-"""``spmcp`` console entry point."""
+"""``superproductivity-sync-mcp`` console entry point."""
 
 from __future__ import annotations
 

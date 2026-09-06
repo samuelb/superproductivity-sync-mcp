@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-07
-- **Sources:** `pyproject.toml`, `src/spmcp/app.py`, `src/spmcp/server.py`
+- **Sources:** `pyproject.toml`, `src/superproductivity_sync_mcp/app.py`, `src/superproductivity_sync_mcp/server.py`
 
 ## Context
 

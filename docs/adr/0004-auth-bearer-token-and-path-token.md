@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-07
-- **Sources:** `src/spmcp/app.py` (`TokenAuthMiddleware`), `src/spmcp/config.py`
+- **Sources:** `src/superproductivity_sync_mcp/app.py` (`TokenAuthMiddleware`), `src/superproductivity_sync_mcp/config.py`
 
 ## Context
 

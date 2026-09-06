@@ -1,7 +1,7 @@
 import pytest
 
-from spmcp import mutations as m
-from spmcp.store import ConflictError
+from superproductivity_sync_mcp import mutations as m
+from superproductivity_sync_mcp.store import ConflictError
 
 from .conftest import BASE, decode_remote
 
@@ -94,8 +94,8 @@ async def test_cache_uses_etag_precheck(store, fake_dav):
 
 
 async def test_recent_ops_trimmed(store, fake_dav):
-    from spmcp import codec
-    from spmcp.syncfile import MAX_RECENT_OPS
+    from superproductivity_sync_mcp import codec
+    from superproductivity_sync_mcp.syncfile import MAX_RECENT_OPS
 
     from .conftest import base_envelope
 
