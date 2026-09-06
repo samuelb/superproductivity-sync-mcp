@@ -1,0 +1,8 @@
+{$MCP_PUBLIC_HOST} {
+	encode zstd gzip
+	# Streamable HTTP uses long-lived responses; do not buffer.
+	reverse_proxy spmcp:8000 {
+		flush_interval -1
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

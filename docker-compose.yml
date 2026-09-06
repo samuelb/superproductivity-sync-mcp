@@ -1,0 +1,49 @@
+# Super Productivity MCP server behind a reverse proxy.
+#
+# The `spmcp` service is NOT published on a host port on purpose: your
+# reverse proxy (Traefik, Caddy, nginx, ...) terminates TLS and forwards
+# to spmcp:8000 on the shared `proxy` network. See README.md for examples.
+services:
+  spmcp:
+    build: .
+    image: spmcp:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - spmcp-data:/data
+    networks:
+      - proxy
+    # --- Traefik example (uncomment and adapt) ---------------------------
+    # labels:
+    #   traefik.enable: "true"
+    #   traefik.http.routers.spmcp.rule: "Host(`mcp.example.com`)"
+    #   traefik.http.routers.spmcp.entrypoints: "websecure"
+    #   traefik.http.routers.spmcp.tls.certresolver: "letsencrypt"
+    #   traefik.http.services.spmcp.loadbalancer.server.port: "8000"
+
+  # --- Optional bundled Caddy reverse proxy (profile: caddy) --------------
+  # docker compose --profile caddy up -d
+  caddy:
+    image: caddy:2
+    profiles: ["caddy"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MCP_PUBLIC_HOST: ${MCP_PUBLIC_HOST:-mcp.example.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - proxy
+
+volumes:
+  spmcp-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  proxy:
+    # Set `external: true` if your proxy already owns this network.

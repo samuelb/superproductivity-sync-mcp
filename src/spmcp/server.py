@@ -1,0 +1,367 @@
+"""MCP tool surface."""
+
+from __future__ import annotations
+
+import logging
+from typing import Annotated, Any
+
+from mcp.server.mcpserver import MCPServer
+from mcp.types import ToolAnnotations
+from pydantic import Field
+
+from . import mutations as m
+from . import queries as q
+from .config import Settings
+from .store import SyncStore
+
+log = logging.getLogger(__name__)
+
+INSTRUCTIONS = """\
+You are connected to the user's Super Productivity task planner through its Nextcloud
+sync file. Reads reflect the last sync of the user's devices; writes are appended to the
+shared operation log and appear on every device on its next sync (usually within a minute).
+
+Conventions:
+- Ids are opaque strings; always pass the exact id returned by a previous tool call.
+- Days are ISO dates (YYYY-MM-DD) in the user's time zone; `today`, `tomorrow` and `+N`
+  are accepted where a day is expected. Times are HH:MM (24h).
+- Durations are minutes.
+- 'TODAY' is a virtual tag: a task is in Today when its due day is today. Use
+  `schedule_task` instead of assigning the TODAY tag.
+- Prefer `get_today` for "what should I do today", `get_planner` for the week ahead and
+  `list_tasks` with filters for everything else. Call `get_task` before editing a task.
+"""
+
+RO = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+RW = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
+DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False)
+
+
+def _min_to_ms(minutes: int | None) -> int | None:
+    return None if minutes is None else int(minutes) * 60000
+
+
+def build_server(store: SyncStore, settings: Settings) -> MCPServer:
+    server = MCPServer(
+        name="super-productivity",
+        title="Super Productivity",
+        instructions=INSTRUCTIONS,
+        version="0.1.0",
+    )
+
+    async def snapshot():
+        sf = await store.load()
+        ctx = store.context_for(sf)
+        return sf, ctx
+
+    def task_out(ctx, task: dict[str, Any]) -> dict[str, Any]:
+        return q.task_summary(ctx.state, task, tz=ctx.tz, today=ctx.today, include_subtasks=True)
+
+    # ------------------------------------------------------------------ reads
+
+    @server.tool(
+        annotations=RO,
+        description="High-level overview: today's counts, projects and tags with ids.",
+    )
+    async def get_overview() -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return q.overview(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
+
+    @server.tool(annotations=RO, description="List projects (id, title, task counts).")
+    async def list_projects(
+        include_archived: Annotated[bool, Field(description="Include archived projects")] = False,
+    ) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return {"projects": q.list_projects(ctx.state, include_archived=include_archived)}
+
+    @server.tool(annotations=RO, description="List tags (id, title, color, task count).")
+    async def list_tags() -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return {"tags": q.list_tags(ctx.state)}
+
+    @server.tool(
+        annotations=RO,
+        description=(
+            "List tasks with optional filters. `due` accepts 'today', 'overdue', 'unscheduled' or a "
+            "YYYY-MM-DD day. Sub-tasks are omitted unless include_subtasks is true."
+        ),
+    )
+    async def list_tasks(
+        project_id: Annotated[str | None, Field(description="Only tasks of this project")] = None,
+        tag_id: Annotated[str | None, Field(description="Only tasks carrying this tag")] = None,
+        include_done: Annotated[bool, Field(description="Include completed tasks")] = False,
+        due: Annotated[str | None, Field(description="'today' | 'overdue' | 'unscheduled' | YYYY-MM-DD")] = None,
+        query: Annotated[str | None, Field(description="Case-insensitive substring of title or notes")] = None,
+        include_subtasks: Annotated[bool, Field(description="Also list sub-tasks")] = False,
+        limit: Annotated[int, Field(ge=1, le=500)] = 100,
+    ) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        tasks = q.list_tasks(
+            ctx.state,
+            tz=ctx.tz,
+            today=ctx.today,
+            project_id=project_id,
+            tag_id=tag_id,
+            include_done=include_done,
+            due=due,
+            query=query,
+            include_subtasks=include_subtasks,
+            limit=limit,
+        )
+        return {"today": ctx.today, "count": len(tasks), "tasks": tasks}
+
+    @server.tool(annotations=RO, description="Full details of one task including notes and sub-tasks.")
+    async def get_task(task_id: str) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        task = m.require_task(ctx.state, task_id)
+        return task_out(ctx, task)
+
+    @server.tool(
+        annotations=RO,
+        description="Today's plan: open tasks in the user's order, tasks done today, and overdue tasks.",
+    )
+    async def get_today() -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return q.today_view(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
+
+    @server.tool(annotations=RO, description="Tasks planned per day for the next N days (starting today).")
+    async def get_planner(days: Annotated[int, Field(ge=1, le=60)] = 7) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return q.planner_view(ctx.state, tz=ctx.tz, today=ctx.today, days=days)
+
+    @server.tool(annotations=RO, description="List notes, optionally only those of one project.")
+    async def list_notes(project_id: str | None = None) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return {"notes": q.list_notes(ctx.state, project_id=project_id, tz=ctx.tz)}
+
+    @server.tool(
+        annotations=RO,
+        description="Search tasks, projects, tags and notes by text. Returns ids usable with `fetch`.",
+    )
+    async def search(query: str) -> dict[str, Any]:
+        sf, ctx = await snapshot()
+        return {"results": q.search(ctx.state, query, tz=ctx.tz, today=ctx.today)}
+
+    @server.tool(annotations=RO, description="Fetch one document returned by `search` (e.g. 'task:<id>').")
+    async def fetch(id: str) -> dict[str, Any]:  # noqa: A002 (name required by ChatGPT connectors)
+        sf, ctx = await snapshot()
+        try:
+            return q.fetch(ctx.state, id, tz=ctx.tz, today=ctx.today)
+        except KeyError as e:
+            raise ValueError(f"Unknown document id {id!r}") from e
+
+    @server.tool(
+        annotations=RO,
+        description="Sync file status: version counters, last writer, encryption flags.",
+    )
+    async def sync_status(
+        refresh: Annotated[bool, Field(description="Bypass the short-lived cache")] = False,
+    ) -> dict[str, Any]:
+        sf = await store.load(force=refresh)
+        ctx = store.context_for(sf)
+        data = sf.data
+        return {
+            "clientId": store.identity.client_id,
+            "today": ctx.today,
+            "timezone": str(ctx.tz),
+            "syncVersion": data.get("syncVersion"),
+            "schemaVersion": data.get("schemaVersion"),
+            "lastModified": q.ms_to_iso(data.get("lastModified"), ctx.tz),
+            "lastWriterClientId": data.get("clientId"),
+            "recentOps": len(data.get("recentOps") or []),
+            "vectorClock": data.get("vectorClock"),
+            "compressed": sf.flags.is_compressed,
+            "encrypted": sf.flags.is_encrypted,
+            "sizeBytes": len(sf.raw.encode("utf-8")),
+        }
+
+    # ----------------------------------------------------------------- writes
+
+    @server.tool(
+        annotations=RW,
+        description=(
+            "Create a task. Defaults to the user's default project (usually Inbox). Pass parent_task_id to "
+            "create a sub-task (sub-tasks inherit project and tags and cannot be scheduled)."
+        ),
+    )
+    async def create_task(
+        title: str,
+        project_id: str | None = None,
+        notes: Annotated[str | None, Field(description="Markdown notes")] = None,
+        tag_ids: list[str] | None = None,
+        due_day: Annotated[str | None, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")] = None,
+        time_estimate_minutes: Annotated[int | None, Field(ge=0)] = None,
+        parent_task_id: str | None = None,
+        add_to_bottom: Annotated[bool, Field(description="Append at the end instead of the top")] = False,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            task = m.create_task(
+                ctx,
+                title=title,
+                project_id=project_id,
+                notes=notes,
+                tag_ids=tag_ids,
+                due_day=due_day,
+                time_estimate_ms=_min_to_ms(time_estimate_minutes),
+                parent_task_id=parent_task_id,
+                add_to_bottom=add_to_bottom,
+            )
+            result.update(task_out(ctx, task))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(
+        annotations=RW,
+        description="Update title, notes, done state, time estimate or tags of a task. Only given fields change.",
+    )
+    async def update_task(
+        task_id: str,
+        title: str | None = None,
+        notes: str | None = None,
+        is_done: bool | None = None,
+        time_estimate_minutes: Annotated[int | None, Field(ge=0)] = None,
+        tag_ids: Annotated[list[str] | None, Field(description="Replaces the full tag list")] = None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            task = m.update_task(
+                ctx,
+                task_id,
+                title=title,
+                notes=notes,
+                is_done=is_done,
+                time_estimate_ms=_min_to_ms(time_estimate_minutes),
+                tag_ids=tag_ids,
+            )
+            result.update(task_out(ctx, task))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(
+        annotations=RW,
+        description="Schedule a task for a day (adds it to Today when day is today) and optionally a time.",
+    )
+    async def schedule_task(
+        task_id: str,
+        day: Annotated[str, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")],
+        time: Annotated[str | None, Field(description="HH:MM (24h) in the user's time zone")] = None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(task_out(ctx, m.schedule_task(ctx, task_id, day=day, time_hhmm=time)))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(
+        annotations=RW,
+        description="Remove day/time scheduling from a task (also removes it from Today).",
+    )
+    async def unschedule_task(task_id: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(task_out(ctx, m.unschedule_task(ctx, task_id)))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(annotations=RW, description="Move a task (with its sub-tasks) to another project.")
+    async def move_task_to_project(task_id: str, project_id: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(task_out(ctx, m.move_task_to_project(ctx, task_id, project_id)))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a task and its sub-tasks.")
+    async def delete_task(task_id: str) -> dict[str, Any]:
+        return await store.mutate(lambda ctx: m.delete_task(ctx, task_id))
+
+    @server.tool(annotations=RW, description="Create a project.")
+    async def create_project(title: str, is_enable_backlog: bool = False) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(
+                q.project_summary(
+                    ctx.state,
+                    m.create_project(ctx, title=title, is_enable_backlog=is_enable_backlog),
+                )
+            )
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(
+        annotations=RW,
+        description="Rename a project and/or archive (is_archived=true) or unarchive it.",
+    )
+    async def update_project(
+        project_id: str, title: str | None = None, is_archived: bool | None = None
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(
+                q.project_summary(
+                    ctx.state,
+                    m.update_project(ctx, project_id, title=title, is_archived=is_archived),
+                )
+            )
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(annotations=RW, description="Create a tag. Color is an optional hex string like #29a1aa.")
+    async def create_tag(title: str, color: str | None = None) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(q.tag_summary(ctx.state, m.create_tag(ctx, title=title, color=color)))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(
+        annotations=RW,
+        description="Create a (markdown) note, optionally attached to a project or pinned to Today.",
+    )
+    async def create_note(content: str, project_id: str | None = None, pin_to_today: bool = False) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(
+                q.note_summary(
+                    ctx.state,
+                    m.create_note(ctx, content=content, project_id=project_id, pin_to_today=pin_to_today),
+                    ctx.tz,
+                )
+            )
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(annotations=RW, description="Replace the content of a note.")
+    async def update_note(note_id: str, content: str) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        def fn(ctx):
+            result.update(q.note_summary(ctx.state, m.update_note(ctx, note_id, content=content), ctx.tz))
+
+        await store.mutate(fn)
+        return result
+
+    @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a note.")
+    async def delete_note(note_id: str) -> dict[str, Any]:
+        return await store.mutate(lambda ctx: m.delete_note(ctx, note_id))
+
+    return server
