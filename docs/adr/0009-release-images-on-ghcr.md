@@ -29,6 +29,8 @@ container registry with the same access control.
   with a `read:packages` token on the deployment host.
 - `uv.lock` must be committed and current (`--frozen`), otherwise CI fails.
 - Build cache lives in GitHub Actions cache; first multi-arch builds are slow.
+- Dependabot keeps actions, the base image and the uv lockfile current via
+  weekly grouped PRs (`.github/dependabot.yml`); the `test` job gates them.
 
 ## Rejected alternatives
 
