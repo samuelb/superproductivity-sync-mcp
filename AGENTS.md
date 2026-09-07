@@ -46,6 +46,8 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
 - Never write `None` where the app writes `undefined`; use `reducers.UNSET`.
 - Mutations may be re-run on write conflicts: keep them pure functions of `ctx`.
 - Do not add tools that emit full-state operations or touch archives.
+- Every tool carries `@tool_errors` under `@server.tool(...)` (ADR-0011); raise
+  the domain exceptions (`MutationError`, `SyncError`, ...) and let it map them.
 
 ## Workflow
 

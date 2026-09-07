@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -13,7 +16,10 @@ from . import __version__
 from . import mutations as m
 from . import queries as q
 from .config import Settings
-from .store import SyncStore
+from .reducers import StateError
+from .store import ConflictError, SyncError, SyncStore
+from .syncfile import SyncFormatError
+from .webdav import AuthFailed, WebDavError
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +48,45 @@ def _min_to_ms(minutes: int | None) -> int | None:
     return None if minutes is None else int(minutes) * 60000
 
 
+def tool_errors[F: Callable[..., Awaitable[Any]]](fn: F) -> F:
+    """Turn the failures a tool can anticipate into ``ToolError``.
+
+    The SDK reports a ``ToolError`` to the caller verbatim (``isError`` result) and
+    logs it at INFO; any other exception is a crash: the caller only sees
+    "Error executing tool <name>" and the server logs a traceback. Everything
+    below is expected at runtime and must carry a message the agent can act on.
+    """
+
+    @functools.wraps(fn)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await fn(*args, **kwargs)
+        except ToolError:
+            raise
+        except (m.MutationError, ValueError) as e:
+            # The caller's mistake (unknown id, bad day string, empty title, ...).
+            raise ToolError(str(e)) from e
+        except ConflictError as e:
+            log.warning("%s: %s", fn.__name__, e)
+            raise ToolError(
+                "Another device is writing to the sync file right now; the change was not "
+                f"applied. Retry in a few seconds. ({e})"
+            ) from e
+        except AuthFailed as e:
+            log.error("%s: %s", fn.__name__, e)
+            raise ToolError(f"Nextcloud rejected the server's credentials; this needs the operator. ({e})") from e
+        except (SyncError, WebDavError) as e:
+            log.warning("%s: %s", fn.__name__, e)
+            raise ToolError(f"Could not reach or read the Nextcloud sync file; retry later. ({e})") from e
+        except (StateError, SyncFormatError) as e:
+            log.error("%s: %s", fn.__name__, e)
+            raise ToolError(
+                f"The sync file's content is not in the expected shape; this needs the operator. ({e})"
+            ) from e
+
+    return wrapper  # type: ignore[return-value]
+
+
 def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     server = MCPServer(
         name="super-productivity",
@@ -63,11 +108,13 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RO,
         description="High-level overview: today's counts, projects and tags with ids.",
     )
+    @tool_errors
     async def get_overview() -> dict[str, Any]:
         ctx = await snapshot()
         return q.overview(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
 
     @server.tool(annotations=RO, description="List projects (id, title, task counts).")
+    @tool_errors
     async def list_projects(
         include_archived: Annotated[bool, Field(description="Include archived projects")] = False,
     ) -> dict[str, Any]:
@@ -75,6 +122,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         return {"projects": q.list_projects(ctx.state, include_archived=include_archived)}
 
     @server.tool(annotations=RO, description="List tags (id, title, color, task count).")
+    @tool_errors
     async def list_tags() -> dict[str, Any]:
         ctx = await snapshot()
         return {"tags": q.list_tags(ctx.state)}
@@ -86,6 +134,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
             "YYYY-MM-DD day. Sub-tasks are omitted unless include_subtasks is true."
         ),
     )
+    @tool_errors
     async def list_tasks(
         project_id: Annotated[str | None, Field(description="Only tasks of this project")] = None,
         tag_id: Annotated[str | None, Field(description="Only tasks carrying this tag")] = None,
@@ -111,6 +160,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         return {"today": ctx.today, "count": len(tasks), "tasks": tasks}
 
     @server.tool(annotations=RO, description="Full details of one task including notes and sub-tasks.")
+    @tool_errors
     async def get_task(task_id: str) -> dict[str, Any]:
         ctx = await snapshot()
         task = m.require_task(ctx.state, task_id)
@@ -120,16 +170,19 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RO,
         description="Today's plan: open tasks in the user's order, tasks done today, and overdue tasks.",
     )
+    @tool_errors
     async def get_today() -> dict[str, Any]:
         ctx = await snapshot()
         return q.today_view(ctx.state, tz=ctx.tz, today=ctx.today, now_ms=ctx.now_ms)
 
     @server.tool(annotations=RO, description="Tasks planned per day for the next N days (starting today).")
+    @tool_errors
     async def get_planner(days: Annotated[int, Field(ge=1, le=60)] = 7) -> dict[str, Any]:
         ctx = await snapshot()
         return q.planner_view(ctx.state, tz=ctx.tz, today=ctx.today, days=days)
 
     @server.tool(annotations=RO, description="List notes, optionally only those of one project.")
+    @tool_errors
     async def list_notes(project_id: str | None = None) -> dict[str, Any]:
         ctx = await snapshot()
         return {"notes": q.list_notes(ctx.state, project_id=project_id, tz=ctx.tz)}
@@ -138,11 +191,13 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RO,
         description="Search tasks, projects, tags and notes by text. Returns ids usable with `fetch`.",
     )
+    @tool_errors
     async def search(query: str) -> dict[str, Any]:
         ctx = await snapshot()
         return {"results": q.search(ctx.state, query, tz=ctx.tz, today=ctx.today)}
 
     @server.tool(annotations=RO, description="Fetch one document returned by `search` (e.g. 'task:<id>').")
+    @tool_errors
     async def fetch(id: str) -> dict[str, Any]:  # noqa: A002 (name required by ChatGPT connectors)
         ctx = await snapshot()
         try:
@@ -154,6 +209,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RO,
         description="Sync file status: version counters, last writer, encryption flags.",
     )
+    @tool_errors
     async def sync_status(
         refresh: Annotated[bool, Field(description="Bypass the short-lived cache")] = False,
     ) -> dict[str, Any]:
@@ -184,6 +240,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
             "create a sub-task (sub-tasks inherit project and tags and cannot be scheduled)."
         ),
     )
+    @tool_errors
     async def create_task(
         title: str,
         project_id: str | None = None,
@@ -215,6 +272,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RW,
         description="Update title, notes, done state, time estimate or tags of a task. Only given fields change.",
     )
+    @tool_errors
     async def update_task(
         task_id: str,
         title: str | None = None,
@@ -242,6 +300,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RW,
         description="Schedule a task for a day (adds it to Today when day is today) and optionally a time.",
     )
+    @tool_errors
     async def schedule_task(
         task_id: str,
         day: Annotated[str, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")],
@@ -253,18 +312,22 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RW,
         description="Remove day/time scheduling from a task (also removes it from Today).",
     )
+    @tool_errors
     async def unschedule_task(task_id: str) -> dict[str, Any]:
         return await store.mutate(lambda ctx: task_out(ctx, m.unschedule_task(ctx, task_id)))
 
     @server.tool(annotations=RW, description="Move a task (with its sub-tasks) to another project.")
+    @tool_errors
     async def move_task_to_project(task_id: str, project_id: str) -> dict[str, Any]:
         return await store.mutate(lambda ctx: task_out(ctx, m.move_task_to_project(ctx, task_id, project_id)))
 
     @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a task and its sub-tasks.")
+    @tool_errors
     async def delete_task(task_id: str) -> dict[str, Any]:
         return await store.mutate(lambda ctx: m.delete_task(ctx, task_id))
 
     @server.tool(annotations=RW, description="Create a project.")
+    @tool_errors
     async def create_project(title: str, is_enable_backlog: bool = False) -> dict[str, Any]:
         return await store.mutate(
             lambda ctx: q.project_summary(
@@ -276,6 +339,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RW,
         description="Rename a project and/or archive (is_archived=true) or unarchive it.",
     )
+    @tool_errors
     async def update_project(
         project_id: str, title: str | None = None, is_archived: bool | None = None
     ) -> dict[str, Any]:
@@ -286,6 +350,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         )
 
     @server.tool(annotations=RW, description="Create a tag. Color is an optional hex string like #29a1aa.")
+    @tool_errors
     async def create_tag(title: str, color: str | None = None) -> dict[str, Any]:
         return await store.mutate(lambda ctx: q.tag_summary(ctx.state, m.create_tag(ctx, title=title, color=color)))
 
@@ -293,6 +358,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         annotations=RW,
         description="Create a (markdown) note, optionally attached to a project or pinned to Today.",
     )
+    @tool_errors
     async def create_note(content: str, project_id: str | None = None, pin_to_today: bool = False) -> dict[str, Any]:
         return await store.mutate(
             lambda ctx: q.note_summary(
@@ -303,12 +369,14 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         )
 
     @server.tool(annotations=RW, description="Replace the content of a note.")
+    @tool_errors
     async def update_note(note_id: str, content: str) -> dict[str, Any]:
         return await store.mutate(
             lambda ctx: q.note_summary(ctx.state, m.update_note(ctx, note_id, content=content), ctx.tz)
         )
 
     @server.tool(annotations=DESTRUCTIVE, description="Permanently delete a note.")
+    @tool_errors
     async def delete_note(note_id: str) -> dict[str, Any]:
         return await store.mutate(lambda ctx: m.delete_note(ctx, note_id))
 
