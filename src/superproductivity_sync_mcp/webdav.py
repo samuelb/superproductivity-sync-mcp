@@ -8,7 +8,9 @@ Mirrors the behaviour of the app's ``WebdavApi`` for the pieces we need:
 * PUT is conditional: ``If-Match: <strong etag>`` when we hold one, or
   ``If-None-Match: *`` when creating. A ``412`` raises ``PreconditionFailed``.
   A ``404``/``409`` creates the parent collection once and retries.
-* PROPFIND (Depth 0) gives the canonical etag without transferring the body.
+* PROPFIND (Depth 0) gives the canonical etag without transferring the body;
+  PROPFIND (Depth 1) on the folder lists the file names (backup pruning).
+* DELETE removes a file; a missing file is not an error.
 * Transient failures are retried with a short backoff: connection errors and
   502/503/504 for the idempotent GET/PROPFIND/MKCOL; for PUT only errors
   raised before the request was sent and 503 (Nextcloud maintenance mode),
@@ -21,7 +23,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlparse
 from xml.etree import ElementTree as ET
 
 import httpx
@@ -32,7 +34,7 @@ from .codec import md5_hex
 log = logging.getLogger(__name__)
 
 _STRONG_ETAG_RE = re.compile(r'^"[\x21\x23-\x7e\x80-\xff]*"$')
-_IDEMPOTENT = frozenset({"GET", "PROPFIND", "MKCOL"})
+_IDEMPOTENT = frozenset({"GET", "PROPFIND", "MKCOL", "DELETE"})
 _RETRY_STATUS_IDEMPOTENT = frozenset({423, 502, 503, 504})
 # 423: Nextcloud's transactional file locking while another client writes the
 # same file. The server rejects the request without touching the file, so a PUT
@@ -249,6 +251,45 @@ class NextcloudDav:
             if is_strong_etag(value):
                 return value.strip()
         return None
+
+    async def list_names(self) -> list[str]:
+        """Names of the files directly inside the sync folder (PROPFIND Depth 1)."""
+        folder = self.folder_url()
+        body = '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>'
+        resp = await self._request(
+            "PROPFIND",
+            folder,
+            content=body,
+            headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+        )
+        if resp.status_code != 207:
+            raise HttpError(resp.status_code, "PROPFIND", self.sync_folder, resp.text)
+        try:
+            root = ET.fromstring(resp.content)
+        except ET.ParseError as e:
+            raise WebDavError(f"Unparseable PROPFIND response for {self.sync_folder}") from e
+        folder_path = unquote(urlparse(folder).path).rstrip("/")
+        names: list[str] = []
+        for el in root.iter():
+            if not el.tag.endswith("}href") or not el.text:
+                continue
+            # Nextcloud sends paths; other servers may send absolute URLs.
+            path = unquote(urlparse(el.text.strip()).path).rstrip("/")
+            if path == folder_path:
+                continue  # the collection itself
+            head, _, name = path.rpartition("/")
+            if head == folder_path and name:
+                names.append(name)
+        return names
+
+    async def delete(self, name: str) -> None:
+        """Delete ``name``; a file that is already gone counts as success."""
+        try:
+            resp = await self._request("DELETE", self.url_for(name))
+        except NotFound:
+            return
+        if resp.status_code >= 300:
+            raise HttpError(resp.status_code, "DELETE", name, resp.text)
 
     async def mkcol(self, url: str) -> None:
         try:

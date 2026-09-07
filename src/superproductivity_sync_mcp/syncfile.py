@@ -2,16 +2,37 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from .codec import PrefixFlags
 
 SYNC_FILE = "sync-data.json"
-BACKUP_FILE = "sync-data.json.bak"
 FILE_VERSION = 2
 MAX_RECENT_OPS = 2000
+
+# Backups of the previous content are written next to the sync file as
+# ``sync-data.json.<UTC timestamp>.bak`` (sortable, no characters that upset
+# Nextcloud or Windows clients).
+_BACKUP_TS_FORMAT = "%Y%m%dT%H%M%SZ"
+_BACKUP_RE = re.compile(r"^sync-data\.json\.(\d{8}T\d{6}Z)\.bak$")
+
+
+def backup_file_name(now_ms: int) -> str:
+    stamp = datetime.fromtimestamp(now_ms / 1000, UTC).strftime(_BACKUP_TS_FORMAT)
+    return f"{SYNC_FILE}.{stamp}.bak"
+
+
+def backup_timestamp(name: str) -> datetime | None:
+    """The UTC time encoded in a backup file name, or None for any other file."""
+    m = _BACKUP_RE.match(name)
+    if not m:
+        return None
+    return datetime.strptime(m.group(1), _BACKUP_TS_FORMAT).replace(tzinfo=UTC)
+
 
 VectorClock = dict[str, int]
 

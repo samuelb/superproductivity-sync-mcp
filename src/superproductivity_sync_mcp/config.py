@@ -34,6 +34,9 @@ class Settings(BaseSettings):
         description="Re-download after each upload and compare hashes instead of trusting the PUT etag",
     )
     sp_write_backup: bool = True
+    sp_backup_retention_days: int = Field(
+        default=7, ge=1, le=365, description="Days to keep timestamped sync-data.json.*.bak files"
+    )
     sp_max_write_attempts: int = 3
     http_timeout_seconds: float = 120.0
     http_max_retries: int = Field(default=2, ge=0, le=10, description="Retries for transient WebDAV failures")

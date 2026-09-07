@@ -24,3 +24,4 @@ mark the old one superseded in the same commit. Use `0000-template.md`.
 | [0009](0009-release-images-on-ghcr.md) | Build and publish container images with GitHub Actions to GHCR | Accepted |
 | [0010](0010-put-etag-and-transient-retries.md) | Take the revision from the PUT response and retry transient WebDAV failures | Accepted |
 | [0011](0011-tool-error-reporting.md) | Report anticipated tool failures as `ToolError` through one wrapper | Accepted |
+| [0012](0012-timestamped-backup-history.md) | Keep a week of timestamped backups instead of one `.bak` | Accepted |

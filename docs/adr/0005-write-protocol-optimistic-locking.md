@@ -1,6 +1,6 @@
 # ADR-0005: Write protocol — conditional PUT, backup first, verify, retry
 
-- **Status:** Accepted (step 6 amended by ADR-0010)
+- **Status:** Accepted (step 3 amended by ADR-0012, step 6 by ADR-0010)
 - **Date:** 2026-09-07
 - **Sources:** `src/superproductivity_sync_mcp/store.py`, `src/superproductivity_sync_mcp/webdav.py`; app
   `file-based-sync-adapter.service.ts` (`_uploadOps`, `_uploadWithMismatchFallback`),
@@ -20,7 +20,8 @@ Per mutation, under a process-wide lock:
 1. GET `sync-data.json`; revision = `OC-ETag` if strong, else strong `ETag`,
    else md5 of the body.
 2. Run the mutation on a deep copy; a mutation that emits no op writes nothing.
-3. PUT the previous raw content to `sync-data.json.bak` (best effort).
+3. PUT the previous raw content to a timestamped backup (best effort; see
+   ADR-0012 for the naming and retention).
 4. PUT the new file with `If-Match: <strong etag>`; without a strong etag fall
    back to the app's re-GET hash comparison.
 5. On `412` (or hash mismatch) discard, re-download and re-run the mutation —

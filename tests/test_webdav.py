@@ -107,3 +107,19 @@ async def test_etag_parsing_prefers_oc_etag_and_rejects_weak(fake_dav):
         await dav.get("missing.json")
     with pytest.raises(NotFound):
         await dav.get_etag("missing.json")
+
+
+async def test_list_names_and_delete(fake_dav):
+    dav, _ = make_dav(fake_dav, [])
+    fake_dav.files[f"{BASE}/sync-data.json.20260901T000000Z.bak"] = b"x"
+    fake_dav.files[f"{BASE}/with space.txt"] = b"y"
+    fake_dav.files[f"{BASE}/sub/nested.json"] = b"z"  # one level deeper: not listed
+    fake_dav.files["/remote.php/dav/files/alice/other/sync-data.json"] = b"w"
+    assert sorted(await dav.list_names()) == [
+        "sync-data.json",
+        "sync-data.json.20260901T000000Z.bak",
+        "with space.txt",
+    ]
+    await dav.delete("with space.txt")
+    await dav.delete("with space.txt")  # already gone: not an error
+    assert f"{BASE}/with space.txt" not in fake_dav.files

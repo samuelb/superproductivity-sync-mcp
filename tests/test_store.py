@@ -3,6 +3,7 @@ import pytest
 
 from superproductivity_sync_mcp import mutations as m
 from superproductivity_sync_mcp.store import ClientIdentity, ConflictError, SyncError, SyncStore
+from superproductivity_sync_mcp.syncfile import backup_file_name, backup_timestamp
 from superproductivity_sync_mcp.webdav import NextcloudDav
 
 from .conftest import BASE, TZ, decode_remote
@@ -38,7 +39,7 @@ async def test_create_task_writes_op_and_snapshot(store, fake_dav):
     assert state["globalConfig"]["sync"]["syncProvider"] is None
     # backup was written with the previous content and the PUT was conditional
     paths = [p for p, _ in fake_dav.puts]
-    assert f"{BASE}/sync-data.json.bak" in paths
+    assert any(backup_timestamp(p.rsplit("/", 1)[-1]) for p in paths)
     main_put = [h for p, h in fake_dav.puts if p == f"{BASE}/sync-data.json"][0]
     assert main_put["if-match"].startswith('"')
     # identity counter persisted
@@ -205,3 +206,59 @@ async def test_codec_work_runs_off_the_event_loop(store, monkeypatch):
     monkeypatch.setattr(codec, "encode_sync_file", rec_encode)
     await store.mutate(lambda ctx: m.create_task(ctx, title="threaded"))
     assert seen and threading.get_ident() not in seen
+
+
+async def test_backup_is_timestamped_and_keeps_previous_content(store, fake_dav):
+    store.now_ms = lambda: 1_788_000_000_000  # 2026-08-29T10:40:00Z
+    original = fake_dav.files[f"{BASE}/sync-data.json"]
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    name = backup_file_name(1_788_000_000_000)
+    assert name == "sync-data.json.20260829T104000Z.bak"
+    assert fake_dav.files[f"{BASE}/{name}"] == original
+    assert backup_timestamp(name).isoformat() == "2026-08-29T10:40:00+00:00"
+    assert backup_timestamp("sync-data.json.bak") is None and backup_timestamp("sync-data.json") is None
+
+
+async def test_old_backups_are_pruned_after_a_week(store, fake_dav):
+    now = 1_788_000_000_000
+    store.now_ms = lambda: now
+    day = 86_400_000
+    keep = [backup_file_name(now - 6 * day), backup_file_name(now - 7 * day + 60_000)]
+    drop = [backup_file_name(now - 7 * day - 60_000), backup_file_name(now - 30 * day)]
+    for name in keep + drop:
+        fake_dav.files[f"{BASE}/{name}"] = b"old"
+    fake_dav.files[f"{BASE}/sync-data.json.bak"] = b"legacy"  # not ours to delete
+    fake_dav.files[f"{BASE}/notes.txt"] = b"unrelated"
+
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+
+    remaining = {p.rsplit("/", 1)[-1] for p in fake_dav.files}
+    assert set(keep) <= remaining and not set(drop) & remaining
+    assert {"sync-data.json.bak", "notes.txt", "sync-data.json", backup_file_name(now)} <= remaining
+    assert sorted(d.rsplit("/", 1)[-1] for d in fake_dav.deletes) == sorted(drop)
+
+    # pruning is throttled: the next write within the hour does not list again
+    propfinds = fake_dav.propfinds
+    fake_dav.files[f"{BASE}/{drop[0]}"] = b"old"
+    await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
+    assert fake_dav.propfinds == propfinds and f"{BASE}/{drop[0]}" in fake_dav.files
+
+    # ... but does once the interval has passed
+    store._last_prune -= 4000
+    await store.mutate(lambda ctx: m.create_task(ctx, title="C"))
+    assert f"{BASE}/{drop[0]}" not in fake_dav.files
+
+
+async def test_prune_failure_does_not_fail_the_write(store, fake_dav, monkeypatch):
+    async def boom():
+        raise RuntimeError("listing broken")
+
+    monkeypatch.setattr(store.dav, "list_names", boom)
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    assert decode_remote(fake_dav)["syncVersion"] == 8
+
+
+async def test_no_backup_means_no_prune(store, fake_dav):
+    store.write_backup = False
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    assert fake_dav.propfinds == 0 and all(not p.endswith(".bak") for p, _ in fake_dav.puts)

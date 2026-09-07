@@ -1,6 +1,7 @@
 """In-process fake Nextcloud WebDAV endpoint (ASGI) for tests.
 
-Supports GET / PUT (If-Match, If-None-Match: *) / PROPFIND / MKCOL and emits
+Supports GET / PUT (If-Match, If-None-Match: *) / PROPFIND (Depth 0 and 1) /
+MKCOL / DELETE and emits
 Nextcloud-style ``OC-ETag`` headers. Files are keyed by URL path.
 """
 
@@ -21,6 +22,7 @@ class FakeDav:
     puts: list[tuple[str, dict[str, str]]] = field(default_factory=list)
     gets: int = 0
     propfinds: int = 0
+    deletes: list[str] = field(default_factory=list)
     # Set to a callable to mutate state between the client's GET and PUT.
     on_put: object = None
     # Simulate an unknown user id: PROPFIND on the DAV root returns 404.
@@ -51,13 +53,23 @@ class FakeDav:
                 return Response(status_code=404)
             if path.endswith("/") or path in self.files or any(f.startswith(prefix) for f in self.files):
                 etag = self.etag(path) if path in self.files else '"dir"'
-                body = (
-                    '<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response>'
-                    f"<d:href>{path}</d:href><d:propstat><d:prop><d:getetag>{etag}</d:getetag>"
-                    "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"
+                hrefs = [(path, etag)]
+                if request.headers.get("depth") == "1" and path not in self.files:
+                    hrefs += [(f, self.etag(f)) for f in sorted(self.files) if f.startswith(prefix)]
+                responses = "".join(
+                    f"<d:response><d:href>{h}</d:href><d:propstat><d:prop><d:getetag>{e}</d:getetag>"
+                    "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+                    for h, e in hrefs
                 )
+                body = f'<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">{responses}</d:multistatus>'
                 return Response(body, status_code=207, media_type="application/xml")
             return Response(status_code=404)
+        if method == "DELETE":
+            self.deletes.append(path)
+            if path not in self.files:
+                return Response(status_code=404)
+            del self.files[path]
+            return Response(status_code=204)
         if method == "PUT":
             headers = {k.lower(): v for k, v in request.headers.items()}
             self.puts.append((path, headers))

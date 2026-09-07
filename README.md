@@ -18,7 +18,9 @@ WebDAV provider the whole log lives in one file in your sync folder:
 ```
 sync-data.json      pf_2__{ version: 2, syncVersion, vectorClock, state, archiveYoung,
                             archiveOld, recentOps: [...], ... }
-sync-data.json.bak  previous content (recovery artifact)
+sync-data.json.<UTC stamp>.bak
+                    previous content before each write (recovery artifacts,
+                    kept for SP_BACKUP_RETENTION_DAYS, default 7)
 ```
 
 * `state` is a full snapshot of the app state written by the last uploader.
@@ -31,7 +33,7 @@ For every write this server:
 2. applies the change to a copy of the snapshot with a faithful port of the
    app's reducers, and appends the matching operation(s) with its own vector
    clock component,
-3. writes the old content to `sync-data.json.bak` and uploads the new file with
+3. writes the old content to a timestamped `sync-data.json.<stamp>.bak` and uploads the new file with
    `If-Match`, keeping the etag Nextcloud returns as the new revision. On a
    concurrent write it starts over from the fresh remote (up to 3 attempts);
    transient WebDAV errors are retried with a short backoff.
@@ -121,7 +123,7 @@ All settings are environment variables (see `.env.example`).
 | `MCP_ALLOW_TOKEN_IN_PATH` | accept `https://host/t/<token>/mcp` for clients without header support (ChatGPT) |
 | `MCP_AUTH_DISABLED` | `true` only if your proxy authenticates every request |
 | `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens). When set, requests that carry an `Origin` header are rejected too, since no origins are allow-listed |
-| `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `HTTP_MAX_RETRIES`, `LOG_LEVEL`, `PORT` | tuning |
+| `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_BACKUP_RETENTION_DAYS`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `HTTP_MAX_RETRIES`, `LOG_LEVEL`, `PORT` | tuning |
 
 Use one token per client so you can revoke them individually.
 
@@ -176,7 +178,9 @@ format, the reducer mirror or the security model.
 ## Safety notes and limitations
 
 * Writes rewrite the whole sync file (as every Super Productivity client does).
-  The previous content is kept in `sync-data.json.bak`.
+  The previous content of every write is kept as `sync-data.json.<UTC stamp>.bak`
+  for a week (`SP_BACKUP_RETENTION_DAYS`); older backups are deleted after a
+  successful write. A legacy `sync-data.json.bak` is never touched.
 * The snapshot this server reads is as fresh as the last sync of your devices;
   changes made on a device that has not synced yet are not visible.
 * If two devices edit the same task concurrently, Super Productivity's

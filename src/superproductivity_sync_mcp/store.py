@@ -6,7 +6,9 @@ Write cycle (mirrors ``FileBasedSyncAdapterService._uploadOps``):
 2. Run the mutation against a deep copy of the snapshot; it emits operations.
 3. Build the new envelope: ``syncVersion + 1``, ops tagged with that ``sv``,
    vector clock incremented for this client per op, ``recentOps`` trimmed.
-4. Write the previous content to ``sync-data.json.bak`` (recovery artifact).
+4. Write the previous content to ``sync-data.json.<UTC stamp>.bak`` (recovery
+   artifact); backups older than ``SP_BACKUP_RETENTION_DAYS`` are pruned
+   after a successful upload, at most once an hour.
 5. Conditional PUT (``If-Match``); on 412 start over with the fresh remote.
 6. Take the new revision from the PUT response's ``OC-ETag``; optionally
    (``SP_VERIFY_UPLOAD``) re-download and compare hashes instead.
@@ -24,6 +26,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, TypeVar
 from zoneinfo import ZoneInfo
@@ -33,11 +36,12 @@ from .config import Settings
 from .ids import generate_client_id, is_valid_client_id
 from .ops import PendingOp, build_compact_op
 from .syncfile import (
-    BACKUP_FILE,
     FILE_VERSION,
     MAX_RECENT_OPS,
     SYNC_FILE,
     SyncFile,
+    backup_file_name,
+    backup_timestamp,
     increment_clock,
     merge_clocks,
     validate_envelope,
@@ -47,6 +51,7 @@ from .webdav import Locked, NextcloudDav, NotFound, PreconditionFailed
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
+PRUNE_INTERVAL_S = 3600.0
 
 
 class SyncError(Exception):
@@ -139,6 +144,7 @@ class SyncStore:
         cache_ttl: float = 10.0,
         verify_upload: bool = False,
         write_backup: bool = True,
+        backup_retention_days: int = 7,
         max_attempts: int = 3,
     ) -> None:
         self.dav = dav
@@ -149,9 +155,11 @@ class SyncStore:
         self.cache_ttl = cache_ttl
         self.verify_upload = verify_upload
         self.write_backup = write_backup
+        self.backup_retention_days = max(1, backup_retention_days)
         self.max_attempts = max(1, max_attempts)
         self._cache: SyncFile | None = None
         self._lock = asyncio.Lock()
+        self._last_prune: float | None = None
 
     @classmethod
     def from_settings(cls, s: Settings) -> SyncStore:
@@ -174,6 +182,7 @@ class SyncStore:
             cache_ttl=s.sp_cache_ttl_seconds,
             verify_upload=s.sp_verify_upload,
             write_backup=s.sp_write_backup,
+            backup_retention_days=s.sp_backup_retention_days,
             max_attempts=s.sp_max_write_attempts,
         )
 
@@ -293,10 +302,11 @@ class SyncStore:
                 text = await asyncio.to_thread(self._encode, envelope, sf)
 
                 if self.write_backup:
+                    backup_name = backup_file_name(ctx.now_ms)
                     try:
-                        await self.dav.put(BACKUP_FILE, sf.raw)
+                        await self.dav.put(backup_name, sf.raw)
                     except Exception as e:  # noqa: BLE001
-                        log.warning("Could not write %s: %s", BACKUP_FILE, e)
+                        log.warning("Could not write %s: %s", backup_name, e)
 
                 try:
                     if sf.strong_etag:
@@ -342,8 +352,27 @@ class SyncStore:
                     sf.sync_version,
                     envelope["syncVersion"],
                 )
+                if self.write_backup:
+                    await self._prune_backups(ctx.now_ms)
                 return result
             raise ConflictError(f"Could not write the sync file after {self.max_attempts} attempts: {last_error}")
+
+    async def _prune_backups(self, now_ms: int) -> None:
+        """Delete backups older than the retention window; best effort, at most hourly."""
+        if self._last_prune is not None and time.monotonic() - self._last_prune < PRUNE_INTERVAL_S:
+            return
+        self._last_prune = time.monotonic()
+        cutoff = datetime.fromtimestamp(now_ms / 1000, UTC) - timedelta(days=self.backup_retention_days)
+        try:
+            names = await self.dav.list_names()
+            stale = [n for n in names if (ts := backup_timestamp(n)) is not None and ts < cutoff]
+            for name in sorted(stale):
+                await self.dav.delete(name)
+        except Exception as e:  # noqa: BLE001
+            log.warning("Could not prune old backups: %s", e)
+            return
+        if stale:
+            log.info("Pruned %d backup(s) older than %d day(s)", len(stale), self.backup_retention_days)
 
     # --- startup -----------------------------------------------------------------
 
