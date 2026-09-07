@@ -229,7 +229,9 @@ def fake_dav() -> FakeDav:
 @pytest.fixture
 def store(fake_dav: FakeDav, tmp_path) -> SyncStore:
     transport = httpx.ASGITransport(app=make_app(fake_dav))
-    dav = NextcloudDav("https://cloud.example.com", "alice", "alice", "pw", "/sp", transport=transport)
+    dav = NextcloudDav(
+        "https://cloud.example.com", "alice", "alice", "pw", "/sp", transport=transport, retry_backoff=0.0
+    )
     identity = ClientIdentity.load(tmp_path, "M_test01")
     return SyncStore(dav, identity, password=None, allow_plaintext=False, tz=TZ, cache_ttl=0.0)
 

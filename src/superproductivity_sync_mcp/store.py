@@ -43,7 +43,7 @@ from .syncfile import (
     validate_envelope,
 )
 from .timeutil import get_start_of_next_day_diff_ms, today_str
-from .webdav import NextcloudDav, NotFound, PreconditionFailed
+from .webdav import Locked, NextcloudDav, NotFound, PreconditionFailed
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -307,10 +307,11 @@ class SyncStore:
                         if fresh.rev != sf.rev:
                             raise PreconditionFailed(SYNC_FILE)
                         put_etag = await self.dav.put(SYNC_FILE, text)
-                except PreconditionFailed as e:
+                except (PreconditionFailed, Locked) as e:
                     last_error = e
                     log.info(
-                        "Concurrent write detected (attempt %d/%d); retrying",
+                        "%s (attempt %d/%d); retrying",
+                        "Sync file locked by another client" if isinstance(e, Locked) else "Concurrent write detected",
                         attempt,
                         self.max_attempts,
                     )

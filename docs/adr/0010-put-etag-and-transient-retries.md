@@ -24,12 +24,18 @@ Nextcloud maintenance mode failed the tool call immediately.
   otherwise speaks strong etags returns none on `PUT`.
 - `NextcloudDav._request` retries transient failures with exponential backoff
   (`HTTP_MAX_RETRIES`, default 2, base 0.5 s):
-  - `GET`, `PROPFIND`, `MKCOL`: any transport error and HTTP 502/503/504.
+  - `GET`, `PROPFIND`, `MKCOL`: any transport error and HTTP 423/502/503/504.
   - `PUT`: only errors raised before the request was sent (connection
-    refused/timeout) and HTTP 503. A read timeout or a 502/504 after a `PUT`
+    refused/timeout) and HTTP 423/503. A read timeout or a 502/504 after a `PUT`
     may mean the server processed it; repeating it would race our own write,
     and a subsequent 412 would make `mutate` re-run the mutation on top of
     its own result (duplicate entity). Those errors fail the tool call.
+- HTTP 423 is Nextcloud's transactional file lock, held while another client
+  (typically the app itself) writes `sync-data.json`; the server rejects the
+  request without touching the file. When the lock outlives the client-level
+  retries, `put` raises `Locked` and `mutate` treats it exactly like a 412:
+  drop the cache, re-download, re-run the mutation on the other client's
+  version and upload again, up to `SP_MAX_WRITE_ATTEMPTS`.
 - CPU-bound work (decode, encode, snapshot copy) runs in a worker thread so the
   event loop keeps serving other tool calls.
 
@@ -37,6 +43,7 @@ Nextcloud maintenance mode failed the tool call immediately.
 
 - One download per write instead of two; the cached snapshot after a write is
   the envelope we uploaded plus the server's etag.
-- Brief Nextcloud hiccups are absorbed; a `PUT` interrupted mid-flight still
-  surfaces as an error the agent has to report to the user.
+- Brief Nextcloud hiccups and the app's own uploads are absorbed; a `PUT`
+  interrupted mid-flight still surfaces as an error the agent has to report to
+  the user, and so does a lock that survives every attempt (`ConflictError`).
 - ADR-0005 step 6 is replaced by this record; its other steps stand.

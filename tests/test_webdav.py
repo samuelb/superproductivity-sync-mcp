@@ -7,7 +7,7 @@ from collections import deque
 import httpx
 import pytest
 
-from superproductivity_sync_mcp.webdav import NextcloudDav, WebDavError
+from superproductivity_sync_mcp.webdav import Locked, NextcloudDav, WebDavError
 
 from .conftest import BASE
 from .fake_dav import FakeDav, make_app
@@ -58,10 +58,17 @@ async def test_put_retries_only_before_the_request_was_sent(fake_dav):
     etag = await dav.put("sync-data.json", "pf_2__{}", if_match=fake_dav.etag(f"{BASE}/sync-data.json"))
     assert t.requests == ["PUT", "PUT"] and etag == fake_dav.etag(f"{BASE}/sync-data.json")
 
-    # 503 (maintenance mode) is retried as well
-    dav, t = make_dav(fake_dav, [503])
-    await dav.put("sync-data.json", "pf_2__{}", if_match=fake_dav.etag(f"{BASE}/sync-data.json"))
-    assert t.requests == ["PUT", "PUT"]
+    # 503 (maintenance mode) and 423 (file locked by another client) are retried as well
+    for status in (503, 423):
+        dav, t = make_dav(fake_dav, [status])
+        await dav.put("sync-data.json", "pf_2__{}", if_match=fake_dav.etag(f"{BASE}/sync-data.json"))
+        assert t.requests == ["PUT", "PUT"]
+
+    # a lock that outlives the retries surfaces as Locked
+    dav, t = make_dav(fake_dav, [423] * 3)
+    with pytest.raises(Locked):
+        await dav.put("sync-data.json", "pf_2__{}")
+    assert t.requests == ["PUT"] * 3
 
     # a timeout while waiting for the answer may mean the PUT went through: never retried
     dav, t = make_dav(fake_dav, [httpx.ReadTimeout("slow")])

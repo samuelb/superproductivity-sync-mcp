@@ -25,6 +25,8 @@ class FakeDav:
     on_put: object = None
     # Simulate an unknown user id: PROPFIND on the DAV root returns 404.
     propfind_root_missing: bool = False
+    # Number of upcoming PUTs on sync-data.json to reject with 423 (file lock).
+    locked_puts: int = 0
 
     def etag(self, path: str) -> str:
         return '"' + hashlib.sha1(self.files[path]).hexdigest()[:20] + '"'
@@ -61,6 +63,9 @@ class FakeDav:
             self.puts.append((path, headers))
             if callable(self.on_put):
                 self.on_put(self, path)
+            if self.locked_puts and path.endswith("sync-data.json"):
+                self.locked_puts -= 1
+                return Response(status_code=423, media_type="application/xml")
             if "if-match" in headers:
                 if path not in self.files or headers["if-match"] != self.etag(path):
                     return Response(status_code=412)

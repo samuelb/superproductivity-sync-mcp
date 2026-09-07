@@ -33,8 +33,11 @@ log = logging.getLogger(__name__)
 
 _STRONG_ETAG_RE = re.compile(r'^"[\x21\x23-\x7e\x80-\xff]*"$')
 _IDEMPOTENT = frozenset({"GET", "PROPFIND", "MKCOL"})
-_RETRY_STATUS_IDEMPOTENT = frozenset({502, 503, 504})
-_RETRY_STATUS_PUT = frozenset({503})
+_RETRY_STATUS_IDEMPOTENT = frozenset({423, 502, 503, 504})
+# 423: Nextcloud's transactional file locking while another client writes the
+# same file. The server rejects the request without touching the file, so a PUT
+# is safe to repeat.
+_RETRY_STATUS_PUT = frozenset({423, 503})
 
 
 class WebDavError(Exception):
@@ -47,6 +50,10 @@ class NotFound(WebDavError):
 
 class PreconditionFailed(WebDavError):
     pass
+
+
+class Locked(WebDavError):
+    """HTTP 423: another client holds Nextcloud's file lock; nothing was written."""
 
 
 class AuthFailed(WebDavError):
@@ -156,6 +163,8 @@ class NextcloudDav:
             raise NotFound(url)
         if resp.status_code == 412:
             raise PreconditionFailed(url)
+        if resp.status_code == 423:
+            raise Locked(url)
         return resp
 
     @staticmethod

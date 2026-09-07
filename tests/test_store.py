@@ -82,6 +82,27 @@ async def test_conflict_exhaustion(store, fake_dav):
         await store.mutate(lambda ctx: m.create_task(ctx, title="never"))
 
 
+async def test_locked_file_is_retried_after_redownload(store, fake_dav):
+    # Nextcloud holds the file lock while the app uploads; the app's new
+    # version lands before the lock clears. We must rebase on it, not fail.
+    original = fake_dav.files[f"{BASE}/sync-data.json"]
+    fake_dav.locked_puts = 3  # outlasts the client's own retries (max_retries=2)
+    fake_dav.files[f"{BASE}/sync-data.json"] = original.replace(b'"syncVersion":7', b'"syncVersion":8')
+    await store.mutate(lambda ctx: m.create_task(ctx, title="Locked"))
+    env = decode_remote(fake_dav)
+    assert env["syncVersion"] == 9
+    puts = [p for p, _ in fake_dav.puts if p.endswith("sync-data.json")]
+    assert len(puts) == 4  # 3 locked + 1 success
+    assert fake_dav.gets == 2  # initial load + re-download after the lock
+
+
+async def test_locked_file_exhaustion_is_a_conflict(store, fake_dav):
+    fake_dav.locked_puts = 100
+    store.max_attempts = 2
+    with pytest.raises(ConflictError, match="attempts"):
+        await store.mutate(lambda ctx: m.create_task(ctx, title="never"))
+
+
 async def test_noop_mutation_does_not_write(store, fake_dav):
     with pytest.raises(m.MutationError):
         await store.mutate(lambda ctx: m.update_task(ctx, "t1"))
