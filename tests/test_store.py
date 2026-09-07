@@ -147,3 +147,40 @@ async def test_read_context_shares_snapshot_and_mutation_context_copies(store):
     assert rw.state is not sf.state and rw.state == sf.state
     rw.state["task"]["entities"]["t1"]["title"] = "changed"
     assert sf.state["task"]["entities"]["t1"]["title"] == "Write report"
+
+
+async def test_write_uses_put_etag_and_skips_verification_download(store, fake_dav):
+    fake_dav.gets = 0
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    assert fake_dav.gets == 1  # the initial download only
+    assert store._cache is not None and store._cache.strong_etag == fake_dav.etag(f"{BASE}/sync-data.json")
+    # the cached revision is trusted by the next read (etag pre-check, no download)
+    await store.load()
+    assert fake_dav.gets == 1
+
+    store.verify_upload = True
+    fake_dav.gets = 0
+    await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
+    assert fake_dav.gets == 2  # download + verification
+
+
+async def test_codec_work_runs_off_the_event_loop(store, monkeypatch):
+    import threading
+
+    from superproductivity_sync_mcp import codec
+
+    seen: set[int] = set()
+    real_decode, real_encode = codec.decode_sync_file, codec.encode_sync_file
+
+    def rec_decode(*a, **kw):
+        seen.add(threading.get_ident())
+        return real_decode(*a, **kw)
+
+    def rec_encode(*a, **kw):
+        seen.add(threading.get_ident())
+        return real_encode(*a, **kw)
+
+    monkeypatch.setattr(codec, "decode_sync_file", rec_decode)
+    monkeypatch.setattr(codec, "encode_sync_file", rec_encode)
+    await store.mutate(lambda ctx: m.create_task(ctx, title="threaded"))
+    assert seen and threading.get_ident() not in seen

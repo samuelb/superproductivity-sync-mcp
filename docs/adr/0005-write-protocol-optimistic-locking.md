@@ -1,6 +1,6 @@
 # ADR-0005: Write protocol — conditional PUT, backup first, verify, retry
 
-- **Status:** Accepted
+- **Status:** Accepted (step 6 amended by ADR-0010)
 - **Date:** 2026-09-07
 - **Sources:** `src/superproductivity_sync_mcp/store.py`, `src/superproductivity_sync_mcp/webdav.py`; app
   `file-based-sync-adapter.service.ts` (`_uploadOps`, `_uploadWithMismatchFallback`),
@@ -25,7 +25,8 @@ Per mutation, under a process-wide lock:
    back to the app's re-GET hash comparison.
 5. On `412` (or hash mismatch) discard, re-download and re-run the mutation —
    at most `SP_MAX_WRITE_ATTEMPTS` (3) times, then fail loudly.
-6. Re-GET and compare md5 with what was sent (`SP_VERIFY_UPLOAD`).
+6. Take the new revision from the `PUT` response's `OC-ETag`; re-GET and
+   compare md5 only with `SP_VERIFY_UPLOAD=true` (see ADR-0010).
 7. Persist our vector-clock counter only after success.
 
 Reads use a short cache (`SP_CACHE_TTL_SECONDS`) refreshed by a PROPFIND etag

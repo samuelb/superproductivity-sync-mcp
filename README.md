@@ -31,9 +31,10 @@ For every write this server:
 2. applies the change to a copy of the snapshot with a faithful port of the
    app's reducers, and appends the matching operation(s) with its own vector
    clock component,
-3. writes the old content to `sync-data.json.bak`, uploads the new file with
-   `If-Match`, re-downloads and verifies the hash. On a concurrent write it
-   starts over from the fresh remote (up to 3 attempts).
+3. writes the old content to `sync-data.json.bak` and uploads the new file with
+   `If-Match`, keeping the etag Nextcloud returns as the new revision. On a
+   concurrent write it starts over from the fresh remote (up to 3 attempts);
+   transient WebDAV errors are retried with a short backoff.
 
 Compressed (`pf_C…`) and encrypted (`pf_…E…`, AES-256-GCM + Argon2id) sync
 files are supported; the flags found in the remote file are preserved on write.
@@ -120,7 +121,7 @@ All settings are environment variables (see `.env.example`).
 | `MCP_ALLOW_TOKEN_IN_PATH` | accept `https://host/t/<token>/mcp` for clients without header support (ChatGPT) |
 | `MCP_AUTH_DISABLED` | `true` only if your proxy authenticates every request |
 | `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens). When set, requests that carry an `Origin` header are rejected too, since no origins are allow-listed |
-| `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `LOG_LEVEL`, `PORT` | tuning |
+| `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `HTTP_MAX_RETRIES`, `LOG_LEVEL`, `PORT` | tuning |
 
 Use one token per client so you can revoke them individually.
 

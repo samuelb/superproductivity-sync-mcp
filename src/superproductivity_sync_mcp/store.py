@@ -8,7 +8,11 @@ Write cycle (mirrors ``FileBasedSyncAdapterService._uploadOps``):
    vector clock incremented for this client per op, ``recentOps`` trimmed.
 4. Write the previous content to ``sync-data.json.bak`` (recovery artifact).
 5. Conditional PUT (``If-Match``); on 412 start over with the fresh remote.
-6. Re-download and compare hashes (upload verification).
+6. Take the new revision from the PUT response's ``OC-ETag``; optionally
+   (``SP_VERIFY_UPLOAD``) re-download and compare hashes instead.
+
+Decoding, encoding and the snapshot copy are CPU-bound on multi-MB files and
+run in a worker thread so other tool calls keep being served.
 """
 
 from __future__ import annotations
@@ -133,7 +137,7 @@ class SyncStore:
         allow_plaintext: bool,
         tz: ZoneInfo,
         cache_ttl: float = 10.0,
-        verify_upload: bool = True,
+        verify_upload: bool = False,
         write_backup: bool = True,
         max_attempts: int = 3,
     ) -> None:
@@ -158,6 +162,7 @@ class SyncStore:
             s.nextcloud_password.get_secret_value(),
             s.nextcloud_sync_folder,
             timeout=s.http_timeout_seconds,
+            max_retries=s.http_max_retries,
         )
         identity = ClientIdentity.load(s.data_dir, s.sp_client_id)
         return cls(
@@ -193,7 +198,7 @@ class SyncStore:
                 f"No '{SYNC_FILE}' in the configured sync folder. Run a sync from a Super "
                 "Productivity client first; this server never creates the initial file."
             ) from e
-        sf = self._decode(got.text, got.rev, got.strong_etag)
+        sf = await asyncio.to_thread(self._decode, got.text, got.rev, got.strong_etag)
         self._cache = sf
         return sf
 
@@ -218,6 +223,15 @@ class SyncStore:
 
     def context_for(self, sf: SyncFile) -> MutationContext:
         return MutationContext(sf, self.tz, self.now_ms())
+
+    def _encode(self, envelope: dict[str, Any], sf: SyncFile) -> str:
+        try:
+            text = codec.encode_sync_file(envelope, sf.flags, self.password)
+        except codec.CodecError as e:
+            raise SyncError(str(e)) from e
+        if not text.strip():
+            raise SyncError("Refusing to upload an empty sync file")
+        return text
 
     def read_context_for(self, sf: SyncFile) -> MutationContext:
         """Context over the cached snapshot without copying it (read-only tools)."""
@@ -271,17 +285,12 @@ class SyncStore:
             last_error: Exception | None = None
             for attempt in range(1, self.max_attempts + 1):
                 sf = await self._download()
-                ctx = self.context_for(sf)
+                ctx = await asyncio.to_thread(self.context_for, sf)
                 result = fn(ctx)
                 if not ctx.ops:
                     return result
                 envelope = self._build_envelope(sf, ctx)
-                try:
-                    text = codec.encode_sync_file(envelope, sf.flags, self.password)
-                except codec.CodecError as e:
-                    raise SyncError(str(e)) from e
-                if not text.strip():
-                    raise SyncError("Refusing to upload an empty sync file")
+                text = await asyncio.to_thread(self._encode, envelope, sf)
 
                 if self.write_backup:
                     try:
@@ -291,13 +300,13 @@ class SyncStore:
 
                 try:
                     if sf.strong_etag:
-                        await self.dav.put(SYNC_FILE, text, if_match=sf.strong_etag)
+                        put_etag = await self.dav.put(SYNC_FILE, text, if_match=sf.strong_etag)
                     else:
                         # No strong etag: best-effort content check like the app.
                         fresh = await self.dav.get(SYNC_FILE)
                         if fresh.rev != sf.rev:
                             raise PreconditionFailed(SYNC_FILE)
-                        await self.dav.put(SYNC_FILE, text)
+                        put_etag = await self.dav.put(SYNC_FILE, text)
                 except PreconditionFailed as e:
                     last_error = e
                     log.info(
@@ -308,7 +317,9 @@ class SyncStore:
                     self._cache = None
                     continue
 
-                if self.verify_upload:
+                if self.verify_upload or (put_etag is None and sf.strong_etag):
+                    # Full verification (opt-in), or the server gave no etag on PUT
+                    # although it speaks strong etags: re-download to learn the revision.
                     verify = await self.dav.get(SYNC_FILE)
                     if codec.md5_hex(verify.text) != codec.md5_hex(text):
                         last_error = ConflictError("Upload verification failed; remote content differs")
@@ -316,6 +327,8 @@ class SyncStore:
                         self._cache = None
                         continue
                     rev, strong = verify.rev, verify.strong_etag
+                elif put_etag:
+                    rev, strong = put_etag, put_etag
                 else:
                     rev, strong = codec.md5_hex(text), None
 

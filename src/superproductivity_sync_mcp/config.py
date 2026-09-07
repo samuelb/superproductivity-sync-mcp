@@ -29,10 +29,14 @@ class Settings(BaseSettings):
     sp_timezone: str = "UTC"
     sp_client_id: str | None = None
     sp_cache_ttl_seconds: float = 10.0
-    sp_verify_upload: bool = True
+    sp_verify_upload: bool = Field(
+        default=False,
+        description="Re-download after each upload and compare hashes instead of trusting the PUT etag",
+    )
     sp_write_backup: bool = True
     sp_max_write_attempts: int = 3
     http_timeout_seconds: float = 120.0
+    http_max_retries: int = Field(default=2, ge=0, le=10, description="Retries for transient WebDAV failures")
 
     # --- MCP server -------------------------------------------------------
     mcp_auth_tokens: str = ""

@@ -9,10 +9,15 @@ Mirrors the behaviour of the app's ``WebdavApi`` for the pieces we need:
   ``If-None-Match: *`` when creating. A ``412`` raises ``PreconditionFailed``.
   A ``404``/``409`` creates the parent collection once and retries.
 * PROPFIND (Depth 0) gives the canonical etag without transferring the body.
+* Transient failures are retried with a short backoff: connection errors and
+  502/503/504 for the idempotent GET/PROPFIND/MKCOL; for PUT only errors
+  raised before the request was sent and 503 (Nextcloud maintenance mode),
+  because a PUT that may have been processed must not be repeated.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -27,6 +32,9 @@ from .codec import md5_hex
 log = logging.getLogger(__name__)
 
 _STRONG_ETAG_RE = re.compile(r'^"[\x21\x23-\x7e\x80-\xff]*"$')
+_IDEMPOTENT = frozenset({"GET", "PROPFIND", "MKCOL"})
+_RETRY_STATUS_IDEMPOTENT = frozenset({502, 503, 504})
+_RETRY_STATUS_PUT = frozenset({503})
 
 
 class WebDavError(Exception):
@@ -73,7 +81,11 @@ class NextcloudDav:
         *,
         timeout: float = 120.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        max_retries: int = 2,
+        retry_backoff: float = 0.5,
     ) -> None:
+        self.max_retries = max(0, max_retries)
+        self.retry_backoff = max(0.0, retry_backoff)
         server_url = server_url.rstrip("/")
         self.base_url = f"{server_url}/remote.php/dav/files/{quote(user.strip(), safe='')}/"
         self.sync_folder = sync_folder.strip().strip("/")
@@ -102,11 +114,42 @@ class NextcloudDav:
 
     # --- low level ---------------------------------------------------------
 
+    @staticmethod
+    def _retryable_exception(method: str, e: httpx.HTTPError) -> bool:
+        if isinstance(e, (httpx.ConnectError, httpx.ConnectTimeout)):
+            return True  # nothing was sent yet; safe for every method
+        return method in _IDEMPOTENT and isinstance(e, httpx.TransportError)
+
+    @staticmethod
+    def _retryable_status(method: str, status: int) -> bool:
+        if method in _IDEMPOTENT:
+            return status in _RETRY_STATUS_IDEMPOTENT
+        return status in _RETRY_STATUS_PUT
+
     async def _request(self, method: str, url: str, **kw) -> httpx.Response:
-        try:
-            resp = await self._client.request(method, url, **kw)
-        except httpx.HTTPError as e:
-            raise WebDavError(f"{method} failed: {e}") from e
+        attempts = self.max_retries + 1
+        for attempt in range(1, attempts + 1):
+            try:
+                resp = await self._client.request(method, url, **kw)
+            except httpx.HTTPError as e:
+                if attempt < attempts and self._retryable_exception(method, e):
+                    await self._backoff(attempt, f"{method} {url}: {e}")
+                    continue
+                raise WebDavError(f"{method} failed: {e}") from e
+            if attempt < attempts and self._retryable_status(method, resp.status_code):
+                await self._backoff(attempt, f"{method} {url}: HTTP {resp.status_code}")
+                continue
+            break
+        return self._raise_for_status(resp, url)
+
+    async def _backoff(self, attempt: int, what: str) -> None:
+        delay = self.retry_backoff * (2 ** (attempt - 1))
+        log.warning("Transient WebDAV failure (%s); retry %d/%d in %.1fs", what, attempt, self.max_retries, delay)
+        if delay:
+            await asyncio.sleep(delay)
+
+    @staticmethod
+    def _raise_for_status(resp: httpx.Response, url: str) -> httpx.Response:
         if resp.status_code == 401:
             raise AuthFailed("Nextcloud rejected the credentials (HTTP 401)")
         if resp.status_code == 404:
@@ -169,7 +212,8 @@ class NextcloudDav:
         *,
         if_match: str | None = None,
         create_only: bool = False,
-    ) -> None:
+    ) -> str | None:
+        """Upload ``data``; returns the strong etag of the new revision when the server sends one."""
         if not data.strip():
             raise ValueError(f"Refusing to upload empty data to {name}")
         url = self.url_for(name)
@@ -191,6 +235,11 @@ class NextcloudDav:
             resp = await self._request("PUT", url, content=payload, headers=headers)
         if resp.status_code >= 300:
             raise HttpError(resp.status_code, "PUT", name, resp.text)
+        for header in ("oc-etag", "etag"):
+            value = resp.headers.get(header)
+            if is_strong_etag(value):
+                return value.strip()
+        return None
 
     async def mkcol(self, url: str) -> None:
         try:
