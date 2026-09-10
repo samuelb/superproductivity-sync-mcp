@@ -233,7 +233,10 @@ def store(fake_dav: FakeDav, tmp_path) -> SyncStore:
         "https://cloud.example.com", "alice", "alice", "pw", "/sp", transport=transport, retry_backoff=0.0
     )
     identity = ClientIdentity.load(tmp_path, "M_test01")
-    return SyncStore(dav, identity, password=None, allow_plaintext=False, tz=TZ, cache_ttl=0.0)
+    store = SyncStore(dav, identity, password=None, allow_plaintext=False, tz=TZ, cache_ttl=0.0)
+    # The fixture data assumes "today" is 2026-09-07 (Europe/Berlin); pin the clock so tests do not drift.
+    store.now_ms = lambda: 1_788_775_200_000  # 2026-09-07T12:00:00+02:00
+    return store
 
 
 def decode_remote(fake_dav: FakeDav) -> dict:
