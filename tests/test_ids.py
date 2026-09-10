@@ -1,6 +1,6 @@
 import re
 
-from superproductivity_sync_mcp.ids import generate_client_id, is_valid_client_id, nanoid, uuid7
+from superproductivity_sync_mcp.ids import generate_client_id, is_usable_client_id, is_valid_client_id, nanoid, uuid7
 
 
 def test_nanoid():
@@ -20,3 +20,12 @@ def test_client_id():
     assert cid.startswith("M_") and len(cid) == 8 and is_valid_client_id(cid)
     assert not is_valid_client_id("ab")
     assert is_valid_client_id("E_abc123")
+
+
+def test_usable_client_id_is_stricter_than_the_reader_predicate():
+    # The app's isValidClientIdFormat accepts any 10+ character string so legacy
+    # ids are never orphaned; an id *we* put on the wire must have the minted shape.
+    assert is_valid_client_id("hello world!") and not is_usable_client_id("hello world!")
+    assert is_valid_client_id("E_abc123") and is_usable_client_id("E_abc123")
+    assert not is_usable_client_id("a b c d") and not is_usable_client_id("abcd") and not is_usable_client_id(None)
+    assert is_usable_client_id(generate_client_id())

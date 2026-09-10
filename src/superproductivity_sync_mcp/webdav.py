@@ -63,9 +63,16 @@ class AuthFailed(WebDavError):
 
 
 class HttpError(WebDavError):
+    """An unexpected status. The message names the file only; the response body
+    (Sabre error XML with the account path, a maintenance page with the host)
+    goes to the server log, not to MCP clients."""
+
     def __init__(self, status: int, method: str, path: str, body: str = ""):
         self.status = status
-        super().__init__(f"HTTP {status} on {method} {path}: {body[:200]}")
+        self.body = body
+        super().__init__(f"HTTP {status} on {method} {path}")
+        if body.strip():
+            log.warning("HTTP %d on %s %s: %s", status, method, path, " ".join(body[:500].split()))
 
 
 @dataclass

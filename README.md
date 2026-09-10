@@ -52,7 +52,7 @@ files are supported; the flags found in the remote file are preserved on write.
 | `create_project`, `update_project`, `create_tag` | projects & tags |
 | `create_note`, `update_note`, `delete_note` | notes |
 
-Days are `YYYY-MM-DD` (or `today`, `tomorrow`, `+N`) in `SP_TIMEZONE`; times are
+Days are `YYYY-MM-DD` (or `today`, `tomorrow`, `+N` up to 3650) in `SP_TIMEZONE`; times are
 `HH:MM`; durations are minutes. Not covered on purpose: time tracking,
 repeating-task configs, archiving, reminders, reordering and deleting projects
 or tags (use the app for those).

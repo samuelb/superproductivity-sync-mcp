@@ -19,11 +19,16 @@ therefore a crash. The calling agent could not tell "task not found" from
 
 - Every tool is decorated with `tool_errors`, which maps the project's
   exception families to `ToolError` with a message the agent can act on:
-  - `MutationError`, `ValueError`: the caller's mistake; the message is passed
-    through unchanged.
+  - `MutationError`, `timeutil.InputError`: the caller's mistake; the message is
+    passed through unchanged. Not every `ValueError`: one raised by the codec,
+    the op builder or the WebDAV client is a bug and must surface as a crash
+    (traceback in the log) rather than be blamed on the caller.
   - `ConflictError`: "another device is writing; retry in a few seconds".
   - `AuthFailed`: credentials rejected; needs the operator.
   - other `SyncError` / `WebDavError`: Nextcloud unreachable or unreadable;
+    an `HttpError` names the status and file only, the response body (Sabre
+    error XML with the account path, a maintenance page with the host) goes to
+    the server log (ADR-0004);
     retry later.
   - `StateError`, `SyncFormatError`: sync file content malformed; needs the
     operator.

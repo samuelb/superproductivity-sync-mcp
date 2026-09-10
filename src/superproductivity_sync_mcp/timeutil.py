@@ -9,6 +9,13 @@ from zoneinfo import ZoneInfo
 
 _TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+# Largest ``+N`` accepted; anything further is a typo, and unbounded offsets
+# overflow ``timedelta`` / ``date`` with an OverflowError instead of a ValueError.
+MAX_DAY_OFFSET = 3650
+
+
+class InputError(ValueError):
+    """A day or time string supplied by the caller is not valid."""
 
 
 def get_start_of_next_day_diff_ms(global_config: dict[str, Any] | None) -> int:
@@ -55,16 +62,19 @@ def resolve_day(value: str, today: str) -> str:
     if v == "tomorrow":
         return (base + timedelta(days=1)).isoformat()
     if v.startswith("+") and v[1:].isdigit():
-        return (base + timedelta(days=int(v[1:]))).isoformat()
+        offset = int(v[1:])
+        if offset > MAX_DAY_OFFSET:
+            raise InputError(f"Day offset {value!r} is too large; at most +{MAX_DAY_OFFSET} days")
+        return (base + timedelta(days=offset)).isoformat()
     if is_valid_day(v):
         return v
-    raise ValueError(f"Invalid day {value!r}; use YYYY-MM-DD, 'today', 'tomorrow' or '+N'")
+    raise InputError(f"Invalid day {value!r}; use YYYY-MM-DD, 'today', 'tomorrow' or '+N'")
 
 
 def day_time_to_ms(day: str, hhmm: str, tz: ZoneInfo) -> int:
     m = _TIME_RE.match(hhmm.strip())
     if not m:
-        raise ValueError(f"Invalid time {hhmm!r}; use HH:MM (24h)")
+        raise InputError(f"Invalid time {hhmm!r}; use HH:MM (24h)")
     d = date.fromisoformat(day)
     dt = datetime(d.year, d.month, d.day, int(m.group(1)), int(m.group(2)), tzinfo=tz)
     return int(dt.timestamp() * 1000)

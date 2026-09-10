@@ -61,6 +61,24 @@ async def test_invalid_input_is_reported_not_crashed(server, fake_dav):
     err = await call(server, "fetch", id="bogus:1")
     assert isinstance(err, ToolError) and "Unknown document id" in str(err)
 
+    # an offset that would overflow date arithmetic is a validation error, not a crash
+    err = await call(server, "create_task", title="x", due_day="+99999999999")
+    assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
+    assert "too large" in str(err)
+    assert not fake_dav.puts
+
+
+async def test_internal_value_errors_are_not_blamed_on_the_caller(server, monkeypatch):
+    """Only MutationError/InputError are the caller's mistake; any other ValueError is a bug."""
+    from superproductivity_sync_mcp import queries
+
+    def broken(*a, **kw):
+        raise ValueError("internal invariant violated")
+
+    monkeypatch.setattr(queries, "overview", broken)
+    with pytest.raises(UnexpectedToolError):
+        await server.call_tool("get_overview", {})
+
 
 async def test_persistent_lock_is_reported_as_conflict(server, store, fake_dav):
     fake_dav.locked_puts = 100

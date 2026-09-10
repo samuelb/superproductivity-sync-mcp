@@ -27,6 +27,8 @@ class FlakyTransport(httpx.AsyncBaseTransport):
             step = self.script.popleft()
             if isinstance(step, Exception):
                 raise step
+            if isinstance(step, httpx.Response):
+                return httpx.Response(step.status_code, content=step.content, headers=step.headers, request=request)
             return httpx.Response(step, request=request)
         return await self.inner.handle_async_request(request)
 
@@ -141,3 +143,22 @@ async def test_error_messages_name_the_file_not_the_account(fake_dav):
         await dav.get("missing.json")
     assert str(ei.value) == "sp/missing.json"
     assert dav._display(dav.url_for("x y.json")) == "sp/x y.json"
+
+
+async def test_unexpected_status_keeps_the_response_body_out_of_the_message(fake_dav, caplog):
+    """Sabre's error XML names the account path; it belongs in the server log only."""
+    from superproductivity_sync_mcp import webdav
+    from superproductivity_sync_mcp.webdav import HttpError
+
+    sabre = httpx.Response(
+        500,
+        content=b"<?xml version='1.0'?><d:error><s:message>Something went wrong in "
+        b"'files/alice/sp/sync-data.json' on cloud.example.com</s:message></d:error>",
+    )
+    dav, _ = make_dav(fake_dav, [sabre])
+    with caplog.at_level("WARNING", logger=webdav.__name__):
+        with pytest.raises(HttpError) as ei:
+            await dav.get("sync-data.json")
+    assert str(ei.value) == "HTTP 500 on GET sync-data.json"
+    assert ei.value.status == 500 and "alice" in ei.value.body
+    assert "files/alice/sp/sync-data.json" in caplog.text

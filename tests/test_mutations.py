@@ -147,3 +147,14 @@ def test_emitted_payload_is_frozen_before_reducer_runs():
     m.move_task_to_project(ctx, "t2", "INBOX_PROJECT")
     assert ctx.ops[0].action_payload["task"]["projectId"] == "p1"
     assert ctx.state["task"]["entities"]["t2"]["projectId"] == "INBOX_PROJECT"
+
+
+def test_resolve_day_caps_the_offset():
+    from superproductivity_sync_mcp.timeutil import MAX_DAY_OFFSET, InputError, resolve_day
+
+    assert resolve_day(f"+{MAX_DAY_OFFSET}", "2026-09-07") == "2036-09-04"
+    with pytest.raises(InputError, match="too large"):
+        resolve_day(f"+{MAX_DAY_OFFSET + 1}", "2026-09-07")
+    with pytest.raises(InputError, match="too large"):
+        resolve_day("+99999999999999999999", "2026-09-07")
+    assert isinstance(InputError("x"), ValueError)

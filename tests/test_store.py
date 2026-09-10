@@ -294,3 +294,17 @@ async def test_a_bogus_backup_name_does_not_stop_pruning(store, fake_dav):
     await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
     assert f"{BASE}/{stale}" not in fake_dav.files
     assert f"{BASE}/sync-data.json.99999999T999999Z.bak" in fake_dav.files
+
+
+def test_configured_client_id_must_have_the_minted_shape(tmp_path):
+    with pytest.raises(ValueError, match="SP_CLIENT_ID"):
+        ClientIdentity.load(tmp_path, "hello world!")  # 10+ chars: a reader accepts it, we must not mint it
+    assert ClientIdentity.load(tmp_path, "M_ok_01").client_id == "M_ok_01"
+
+
+def test_unreadable_counter_in_client_json_is_ignored(tmp_path, caplog):
+    (tmp_path / "client.json").write_text('{"clientId": "M_test01", "counter": "many"}')
+    with caplog.at_level("WARNING"):
+        ident = ClientIdentity.load(tmp_path, None)
+    assert ident.client_id == "M_test01" and ident.counter == 0
+    assert "unreadable counter" in caplog.text

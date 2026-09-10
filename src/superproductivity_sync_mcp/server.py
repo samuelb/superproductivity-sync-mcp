@@ -19,6 +19,7 @@ from .config import Settings
 from .reducers import StateError
 from .store import ConflictError, SyncError, SyncStore
 from .syncfile import SyncFormatError
+from .timeutil import InputError
 from .webdav import AuthFailed, WebDavError
 
 log = logging.getLogger(__name__)
@@ -63,8 +64,10 @@ def tool_errors[F: Callable[..., Awaitable[Any]]](fn: F) -> F:
             return await fn(*args, **kwargs)
         except ToolError:
             raise
-        except (m.MutationError, ValueError) as e:
+        except (m.MutationError, InputError) as e:
             # The caller's mistake (unknown id, bad day string, empty title, ...).
+            # Deliberately not every ValueError: one raised by the codec, the op
+            # builder or the WebDAV client is a bug and must surface as a crash.
             raise ToolError(str(e)) from e
         except ConflictError as e:
             log.warning("%s: %s", fn.__name__, e)
@@ -203,7 +206,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         try:
             return q.fetch(ctx.state, id, tz=ctx.tz, today=ctx.today)
         except KeyError as e:
-            raise ValueError(f"Unknown document id {id!r}") from e
+            raise m.NotFoundError(f"Unknown document id {id!r}") from e
 
     @server.tool(
         annotations=RO,

@@ -34,7 +34,7 @@ from zoneinfo import ZoneInfo
 
 from . import codec
 from .config import Settings
-from .ids import generate_client_id, is_valid_client_id
+from .ids import generate_client_id, is_usable_client_id
 from .ops import PendingOp, build_compact_op
 from .syncfile import (
     FILE_VERSION,
@@ -79,12 +79,17 @@ class ClientIdentity:
         except Exception as e:  # noqa: BLE001
             log.warning("Could not read %s: %s", path, e)
         client_id = configured_id or stored.get("clientId")
-        if not is_valid_client_id(client_id):
+        if not is_usable_client_id(client_id):
             if configured_id:
-                raise ValueError("SP_CLIENT_ID must be >= 5 chars of [A-Za-z0-9_-]")
+                raise ValueError("SP_CLIENT_ID must be at least 5 characters of [A-Za-z0-9_-]")
             client_id = generate_client_id()
             log.info("Generated new sync client id %s", client_id)
-        counter = int(stored.get("counter") or 0) if stored.get("clientId") == client_id else 0
+        counter = 0
+        if stored.get("clientId") == client_id:
+            try:
+                counter = max(0, int(stored.get("counter") or 0))
+            except TypeError, ValueError:
+                log.warning("Ignoring unreadable counter %r in %s", stored.get("counter"), path)
         ident = cls(client_id=client_id, counter=counter, path=path)
         ident.save()
         return ident

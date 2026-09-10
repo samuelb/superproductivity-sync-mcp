@@ -2,15 +2,23 @@
 
 * Entity ids: 21-character nanoid (alphabet ``A-Za-z0-9_-``), like the app.
 * Operation ids: UUID v7 (time-ordered), like the app's op log.
-* Client ids: ``M_<6 base62>`` — passes the app's ``isValidClientIdFormat``
-  (charset ``[a-zA-Z0-9_-]``, length >= 5). ``M`` marks the MCP server; the
-  app decodes unknown prefixes as "unknown platform", which is harmless.
+* Client ids: ``M_<6 base62>``. ``M`` marks the MCP server; the app decodes
+  unknown prefixes as "unknown platform", which is harmless.
+  ``is_valid_client_id`` mirrors the app's ``isValidClientIdFormat``
+  (generate-client-id.ts), which deliberately also accepts any string of 10+
+  characters so legacy ids are never orphaned. ``is_usable_client_id`` is the
+  stricter rule for an id *we* put on the wire: the charset ``[A-Za-z0-9_-]``
+  that the app itself mints and that SuperSync requires, length >= 5.
 """
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
+
+MIN_CLIENT_ID_LENGTH = 5  # operation-log.const.ts; incrementVectorClock throws below it
+_USABLE_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _NANOID_ALPHABET = "useandom-26T198340PX75pxJACKVERYMINDBUSHWOLF_GQZbfghjklqvwyzrict"
 _BASE62 = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -37,9 +45,13 @@ def generate_client_id() -> str:
     return "M_" + "".join(secrets.choice(_BASE62) for _ in range(6))
 
 
+def is_usable_client_id(value: object) -> bool:
+    """An id this server may use as its own: the shape the app mints."""
+    return isinstance(value, str) and len(value) >= MIN_CLIENT_ID_LENGTH and bool(_USABLE_CLIENT_ID_RE.match(value))
+
+
 def is_valid_client_id(value: object) -> bool:
+    """Port of the app's ``isValidClientIdFormat``: what a reader must accept."""
     if not isinstance(value, str):
         return False
-    if len(value) >= 10:
-        return True
-    return len(value) >= 5 and all(c.isalnum() or c in "_-" for c in value)
+    return len(value) >= 10 or is_usable_client_id(value)
