@@ -15,15 +15,18 @@ FILE_VERSION = 2
 MAX_RECENT_OPS = 2000
 
 # Backups of the previous content are written next to the sync file as
-# ``sync-data.json.<UTC timestamp>.bak`` (sortable, no characters that upset
-# Nextcloud or Windows clients).
+# ``sync-data.json.<UTC timestamp>.sv<syncVersion>.bak`` (sortable, no
+# characters that upset Nextcloud or Windows clients). The sync version keeps
+# two writes within the same second from sharing a name. Names without the
+# ``.sv<N>`` part were written by earlier versions and are still pruned.
 _BACKUP_TS_FORMAT = "%Y%m%dT%H%M%SZ"
-_BACKUP_RE = re.compile(r"^sync-data\.json\.(\d{8}T\d{6}Z)\.bak$")
+_BACKUP_RE = re.compile(r"^sync-data\.json\.(\d{8}T\d{6}Z)(?:\.sv\d+)?\.bak$")
 
 
-def backup_file_name(now_ms: int) -> str:
+def backup_file_name(now_ms: int, sync_version: int | None = None) -> str:
     stamp = datetime.fromtimestamp(now_ms / 1000, UTC).strftime(_BACKUP_TS_FORMAT)
-    return f"{SYNC_FILE}.{stamp}.bak"
+    suffix = f".sv{sync_version}" if sync_version is not None else ""
+    return f"{SYNC_FILE}.{stamp}{suffix}.bak"
 
 
 def backup_timestamp(name: str) -> datetime | None:
@@ -31,7 +34,10 @@ def backup_timestamp(name: str) -> datetime | None:
     m = _BACKUP_RE.match(name)
     if not m:
         return None
-    return datetime.strptime(m.group(1), _BACKUP_TS_FORMAT).replace(tzinfo=UTC)
+    try:
+        return datetime.strptime(m.group(1), _BACKUP_TS_FORMAT).replace(tzinfo=UTC)
+    except ValueError:
+        return None  # right shape, impossible date: not one of ours
 
 
 VectorClock = dict[str, int]

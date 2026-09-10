@@ -14,7 +14,9 @@ does not support OAuth. TLS is terminated by the reverse proxy.
 ## Decision
 
 - Static bearer tokens (`MCP_AUTH_TOKENS`, ≥ 16 chars, constant-time compare),
-  several allowed so each client gets its own.
+  several allowed so each client gets its own. A token that still contains the
+  `.env.example` placeholder (`change-me`) is refused at start-up: it passed
+  the length check and would have shipped a publicly known credential.
 - Optional `MCP_ALLOW_TOKEN_IN_PATH`: `/t/<token>/...` is rewritten to `/...`
   after validation. Off by default; documented as a password-in-URL. Because
   the request target would appear verbatim in access logs, uvicorn's access log
@@ -22,6 +24,15 @@ does not support OAuth. TLS is terminated by the reverse proxy.
 - `MCP_AUTH_DISABLED=true` exists for proxies that authenticate themselves.
 - The server refuses to start with no token unless auth is explicitly disabled.
 - `/healthz` is unauthenticated and reveals only the sync client id.
+- Rejections are logged at WARNING with client address, method, path (a path
+  token is redacted) and reason, never the presented token; after 20 in a
+  minute the remainder of the minute is summarised in one line so a
+  brute-force attempt is visible without flooding the log.
+- Header values are decoded as latin-1 (HTTP allows any byte in a field
+  value); the gate forwards only `http` and `lifespan` scopes and refuses a
+  websocket handshake, since nothing behind it speaks websocket.
+- WebDAV errors relayed to clients name the file, not the DAV URL: a token
+  holder does not learn the Nextcloud host or account id from a conflict.
 - DNS-rebinding protection of the SDK is enabled only when `MCP_ALLOWED_HOSTS`
   is set.
 

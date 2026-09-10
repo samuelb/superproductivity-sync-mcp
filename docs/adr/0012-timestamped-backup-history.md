@@ -16,15 +16,21 @@ artifact left, and the app's own sync overwrites the same file name.
 ## Decision
 
 - Each write stores the previous raw content as
-  `sync-data.json.<YYYYMMDD>T<HHMMSS>Z.bak` (UTC, second precision, no
-  characters that upset Nextcloud or Windows clients). The name sorts
-  chronologically and needs no server metadata to interpret.
+  `sync-data.json.<YYYYMMDD>T<HHMMSS>Z.sv<syncVersion>.bak` (UTC, second
+  precision, no characters that upset Nextcloud or Windows clients). The name
+  sorts chronologically and needs no server metadata to interpret; the sync
+  version being replaced keeps two writes within one second — routine for an
+  agent issuing a burst of tool calls — from overwriting each other's backup.
+  Names written before the suffix existed (`...Z.bak`) are still recognised
+  and pruned.
 - After a successful upload the store lists the sync folder (PROPFIND Depth 1)
   and deletes backups whose name is older than `SP_BACKUP_RETENTION_DAYS`
   (default 7, 1–365). Pruning runs at most once an hour per process and is
   best effort: a failure is logged and never fails the write.
 - Only files matching the timestamped pattern are ever deleted. The legacy
-  `sync-data.json.bak` and anything else in the folder are left alone.
+  `sync-data.json.bak` and anything else in the folder are left alone. A name
+  that matches the pattern but is not a real date is ignored rather than
+  allowed to abort the whole pruning pass.
 - `SP_WRITE_BACKUP=false` disables both the backup and the pruning.
 
 ## Consequences

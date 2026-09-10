@@ -116,16 +116,19 @@ All settings are environment variables (see `.env.example`).
 | `NEXTCLOUD_LOGIN` | optional login name if you sign in with an e-mail address |
 | `NEXTCLOUD_PASSWORD` | app password |
 | `NEXTCLOUD_SYNC_FOLDER` | sync folder path as configured in the app, e.g. `/super-productivity` |
+| `NEXTCLOUD_ALLOW_HTTP` | `true` to accept a plain `http://` URL for a host other than localhost (sends the app password in clear text) |
 | `SP_ENCRYPTION_PASSWORD` | only if "Encrypt sync data" is on; when set, a plaintext remote file is refused unless `SP_ALLOW_PLAINTEXT=true` |
 | `SP_TIMEZONE` | IANA zone used for "today" (should match your devices) |
 | `SP_CLIENT_ID` | optional fixed sync client id; otherwise generated once and stored in the `/data` volume. **Never delete the volume casually** — the id keys this server's vector-clock component |
-| `MCP_AUTH_TOKENS` | comma-separated bearer tokens (≥ 16 chars each) |
+| `MCP_AUTH_TOKENS` | comma-separated bearer tokens (≥ 16 chars each; the `.env.example` placeholder is refused) |
 | `MCP_ALLOW_TOKEN_IN_PATH` | accept `https://host/t/<token>/mcp` for clients without header support (ChatGPT) |
 | `MCP_AUTH_DISABLED` | `true` only if your proxy authenticates every request |
 | `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens). When set, requests that carry an `Origin` header are rejected too, since no origins are allow-listed |
 | `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_BACKUP_RETENTION_DAYS`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `HTTP_MAX_RETRIES`, `LOG_LEVEL`, `PORT` | tuning |
 
-Use one token per client so you can revoke them individually.
+Use one token per client so you can revoke them individually. Rejected requests
+are logged with the client address and reason (never the token); after 20 in a
+minute the rest of that minute is summarised in one line.
 
 ## Connecting clients
 
@@ -178,9 +181,10 @@ format, the reducer mirror or the security model.
 ## Safety notes and limitations
 
 * Writes rewrite the whole sync file (as every Super Productivity client does).
-  The previous content of every write is kept as `sync-data.json.<UTC stamp>.bak`
-  for a week (`SP_BACKUP_RETENTION_DAYS`); older backups are deleted after a
-  successful write. A legacy `sync-data.json.bak` is never touched.
+  The previous content of every write is kept as
+  `sync-data.json.<UTC stamp>.sv<syncVersion>.bak` for a week
+  (`SP_BACKUP_RETENTION_DAYS`); older backups are deleted after a successful
+  write. A legacy `sync-data.json.bak` is never touched.
 * The snapshot this server reads is as fresh as the last sync of your devices;
   changes made on a device that has not synced yet are not visible.
 * If two devices edit the same task concurrently, Super Productivity's

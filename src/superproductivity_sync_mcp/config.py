@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Fragments that mark a token copied from .env.example rather than generated.
+_PLACEHOLDER_TOKEN_MARKERS = ("change-me", "changeme", "change_me")
+
+
+def _is_loopback(host: str | None) -> bool:
+    if not host:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 class Settings(BaseSettings):
@@ -19,6 +35,10 @@ class Settings(BaseSettings):
     nextcloud_login: str | None = Field(default=None, description="Login name if different")
     nextcloud_password: SecretStr = Field(description="Nextcloud app password")
     nextcloud_sync_folder: str = Field(default="/super-productivity")
+    nextcloud_allow_http: bool = Field(
+        default=False,
+        description="Allow a plain http:// NEXTCLOUD_URL for a host other than localhost",
+    )
 
     # --- Super Productivity sync file -------------------------------------
     sp_encryption_password: SecretStr | None = None
@@ -109,3 +129,15 @@ class Settings(BaseSettings):
         for t in self.auth_tokens:
             if len(t) < 16:
                 raise ValueError("Every MCP auth token must be at least 16 characters long")
+            if any(marker in t.lower() for marker in _PLACEHOLDER_TOKEN_MARKERS):
+                raise ValueError(
+                    "MCP_AUTH_TOKENS still contains the placeholder from .env.example; "
+                    "generate a token with `openssl rand -hex 32`"
+                )
+        url = urlparse(self.nextcloud_url)
+        if url.scheme == "http" and not self.nextcloud_allow_http and not _is_loopback(url.hostname):
+            raise ValueError(
+                "NEXTCLOUD_URL uses plain http://, which sends the Nextcloud app password and the "
+                "whole sync file in clear text. Use https://, or set NEXTCLOUD_ALLOW_HTTP=true "
+                "for a network you trust."
+            )

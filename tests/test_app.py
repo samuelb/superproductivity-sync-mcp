@@ -126,3 +126,78 @@ async def test_startup_probe_classifies_errors(store, fake_dav, caplog):
     with caplog.at_level("WARNING"):
         await entry._probe(store)
     assert "not reachable" in caplog.text
+
+
+def _scope(path, headers=(), stype="http", client=("203.0.113.9", 4242)):
+    return {
+        "type": stype,
+        "method": "GET",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "headers": list(headers),
+        "client": client,
+    }
+
+
+async def _call(app, scope):
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message):
+        sent.append(message)
+
+    await app(scope, receive, send)
+    return sent
+
+
+async def test_non_utf8_header_bytes_are_rejected_not_crashed():
+    app = TokenAuthMiddleware(_echo, ["secret-token-1234567"], allow_token_in_path=False, disabled=False)
+    sent = await _call(app, _scope("/mcp", [(b"authorization", b"Bearer \xff\xfe")]))
+    assert sent[0]["status"] == 401
+    sent = await _call(app, _scope("/mcp", [(b"x-junk", b"\xff"), (b"authorization", b"Bearer secret-token-1234567")]))
+    assert sent[0]["status"] == 200
+
+
+async def test_websocket_handshake_is_refused_without_reaching_the_app():
+    hit = []
+
+    async def inner(scope, receive, send):
+        hit.append(scope["type"])
+
+    app = TokenAuthMiddleware(inner, ["secret-token-1234567"], allow_token_in_path=False, disabled=False)
+    sent = await _call(app, _scope("/mcp", stype="websocket"))
+    assert sent == [{"type": "websocket.close", "code": 1008}] and hit == []
+    await _call(app, {"type": "lifespan"})
+    assert hit == ["lifespan"]
+
+
+async def test_rejections_are_logged_without_the_token(client, caplog):
+    from superproductivity_sync_mcp import app as app_module
+
+    with caplog.at_level("WARNING", logger=app_module.__name__):
+        await client.get("/mcp")
+        await client.get("/mcp", headers={"Authorization": "Bearer wrong-token-attempt"})
+        await client.get("/t/wrong-path-token/mcp")
+        await client.get("/mcp", headers={"Authorization": "Bearer secret-token-1234567"})
+    reasons = [r.getMessage() for r in caplog.records]
+    assert len(reasons) == 3
+    assert "no bearer token" in reasons[0] and "invalid bearer token" in reasons[1]
+    assert "invalid path token" in reasons[2] and "/t/<redacted>/mcp" in reasons[2]
+    assert "wrong-token-attempt" not in caplog.text and "wrong-path-token" not in caplog.text
+
+
+async def test_rejection_log_is_throttled(caplog):
+    from superproductivity_sync_mcp import app as app_module
+
+    app = TokenAuthMiddleware(_echo, ["secret-token-1234567"], allow_token_in_path=False, disabled=False)
+    with caplog.at_level("WARNING", logger=app_module.__name__):
+        for _ in range(app_module.REJECT_LOG_MAX_PER_WINDOW + 30):
+            await _call(app, _scope("/mcp"))
+        assert len(caplog.records) == app_module.REJECT_LOG_MAX_PER_WINDOW
+        app._reject_window_start -= app_module.REJECT_LOG_WINDOW_S  # the window elapses
+        await _call(app, _scope("/mcp"))
+    assert "Rejected 30 further" in caplog.records[-2].getMessage()
+    assert caplog.records[-1].getMessage().startswith("Rejected GET /mcp from 203.0.113.9:4242")

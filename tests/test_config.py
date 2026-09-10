@@ -46,3 +46,41 @@ def test_runtime_validation_of_tokens():
         **{**BASE, "mcp_auth_tokens": "aaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbb", "mcp_auth_token": "cccccccccccccccc"}
     )
     assert s.auth_tokens == ["aaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbb", "cccccccccccccccc"]
+
+
+def test_placeholder_token_is_refused():
+    for token in ("change-me-to-a-long-random-secret", "ChangeMe-and-then-some-more", "please_change_me_now"):
+        with pytest.raises(ValueError, match="placeholder"):
+            Settings(**{**BASE, "mcp_auth_tokens": token}).validate_runtime()
+
+
+def test_env_example_never_starts_as_is():
+    """The shipped example must fail validate_runtime, or a copy-paste deploy ships a public token."""
+    import re
+    from pathlib import Path
+
+    values = dict(re.findall(r"^([A-Z_]+)=(.*)$", Path(".env.example").read_text(), re.M))
+    kwargs = {k.lower(): v for k, v in values.items() if v}
+    with pytest.raises(ValueError, match="placeholder"):
+        Settings(**kwargs, _env_file=None).validate_runtime()
+
+
+@pytest.mark.parametrize(
+    ("url", "allow", "ok"),
+    [
+        ("http://cloud.example.com", False, False),
+        ("http://10.0.0.5:8080", False, False),
+        ("http://cloud.example.com", True, True),
+        ("http://localhost:8080", False, True),
+        ("http://127.0.0.1", False, True),
+        ("http://[::1]:8080", False, True),
+        ("https://cloud.example.com", False, True),
+    ],
+)
+def test_plain_http_needs_loopback_or_opt_in(url, allow, ok):
+    s = Settings(**{**BASE, "nextcloud_url": url, "nextcloud_allow_http": allow})
+    if ok:
+        s.validate_runtime()
+    else:
+        with pytest.raises(ValueError, match="NEXTCLOUD_ALLOW_HTTP"):
+            s.validate_runtime()

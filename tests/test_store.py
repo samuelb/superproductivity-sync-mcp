@@ -212,8 +212,8 @@ async def test_backup_is_timestamped_and_keeps_previous_content(store, fake_dav)
     store.now_ms = lambda: 1_788_000_000_000  # 2026-08-29T10:40:00Z
     original = fake_dav.files[f"{BASE}/sync-data.json"]
     await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
-    name = backup_file_name(1_788_000_000_000)
-    assert name == "sync-data.json.20260829T104000Z.bak"
+    name = backup_file_name(1_788_000_000_000, 7)
+    assert name == "sync-data.json.20260829T104000Z.sv7.bak"
     assert fake_dav.files[f"{BASE}/{name}"] == original
     assert backup_timestamp(name).isoformat() == "2026-08-29T10:40:00+00:00"
     assert backup_timestamp("sync-data.json.bak") is None and backup_timestamp("sync-data.json") is None
@@ -234,7 +234,7 @@ async def test_old_backups_are_pruned_after_a_week(store, fake_dav):
 
     remaining = {p.rsplit("/", 1)[-1] for p in fake_dav.files}
     assert set(keep) <= remaining and not set(drop) & remaining
-    assert {"sync-data.json.bak", "notes.txt", "sync-data.json", backup_file_name(now)} <= remaining
+    assert {"sync-data.json.bak", "notes.txt", "sync-data.json", backup_file_name(now, 7)} <= remaining
     assert sorted(d.rsplit("/", 1)[-1] for d in fake_dav.deletes) == sorted(drop)
 
     # pruning is throttled: the next write within the hour does not list again
@@ -262,3 +262,35 @@ async def test_no_backup_means_no_prune(store, fake_dav):
     store.write_backup = False
     await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
     assert fake_dav.propfinds == 0 and all(not p.endswith(".bak") for p, _ in fake_dav.puts)
+
+
+async def test_backup_names_carry_the_sync_version(store, fake_dav):
+    """Two writes within one second must not share a backup name."""
+    store.now_ms = lambda: 1_788_000_000_000
+    before_first = fake_dav.files[f"{BASE}/sync-data.json"]
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    after_first = fake_dav.files[f"{BASE}/sync-data.json"]
+    await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
+    first = backup_file_name(1_788_000_000_000, 7)
+    second = backup_file_name(1_788_000_000_000, 8)
+    assert first == "sync-data.json.20260829T104000Z.sv7.bak" and first != second
+    assert fake_dav.files[f"{BASE}/{first}"] == before_first
+    assert fake_dav.files[f"{BASE}/{second}"] == after_first
+    assert backup_timestamp(first) == backup_timestamp("sync-data.json.20260829T104000Z.bak")
+
+
+def test_backup_timestamp_ignores_impossible_dates():
+    assert backup_timestamp("sync-data.json.99999999T999999Z.bak") is None
+    assert backup_timestamp("sync-data.json.20260829T104000Z.svX.bak") is None
+    assert backup_timestamp("sync-data.json.20260829T104000Z.sv12.bak") is not None
+
+
+async def test_a_bogus_backup_name_does_not_stop_pruning(store, fake_dav):
+    now = 1_788_000_000_000
+    store.now_ms = lambda: now
+    stale = backup_file_name(now - 30 * 86_400_000)
+    fake_dav.files[f"{BASE}/{stale}"] = b"old"
+    fake_dav.files[f"{BASE}/sync-data.json.99999999T999999Z.bak"] = b"odd"
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    assert f"{BASE}/{stale}" not in fake_dav.files
+    assert f"{BASE}/sync-data.json.99999999T999999Z.bak" in fake_dav.files

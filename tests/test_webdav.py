@@ -123,3 +123,21 @@ async def test_list_names_and_delete(fake_dav):
     await dav.delete("with space.txt")
     await dav.delete("with space.txt")  # already gone: not an error
     assert f"{BASE}/with space.txt" not in fake_dav.files
+
+
+async def test_error_messages_name_the_file_not_the_account(fake_dav):
+    """Tool errors are relayed to MCP clients; they must not carry the DAV host or user id."""
+    from superproductivity_sync_mcp.webdav import NotFound, PreconditionFailed
+
+    dav, _ = make_dav(fake_dav, [])
+    with pytest.raises(PreconditionFailed) as ei:
+        await dav.put("sync-data.json", "x", if_match='"stale"')
+    assert str(ei.value) == "sp/sync-data.json"
+    fake_dav.locked_puts = 5
+    with pytest.raises(Locked) as ei:
+        await dav.put("sync-data.json", "x", if_match=fake_dav.etag(f"{BASE}/sync-data.json"))
+    assert str(ei.value) == "sp/sync-data.json"
+    with pytest.raises(NotFound) as ei:
+        await dav.get("missing.json")
+    assert str(ei.value) == "sp/missing.json"
+    assert dav._display(dav.url_for("x y.json")) == "sp/x y.json"

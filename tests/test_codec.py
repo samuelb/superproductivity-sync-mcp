@@ -60,3 +60,22 @@ def test_plaintext_fail_closed():
     with pytest.raises(codec.PlaintextUnexpectedError):
         codec.decode_sync_file(text, "pw", encryption_expected=True)
     assert codec.decode_sync_file(text, "pw", encryption_expected=False)[1] == {"a": 1}
+
+
+def test_key_cache_is_bounded_and_never_holds_the_password(monkeypatch):
+    import os
+
+    monkeypatch.setattr(codec, "KEY_CACHE_MAX", 4)  # each derivation costs ~100 ms
+    codec._key_cache.clear()
+    for _ in range(codec.KEY_CACHE_MAX + 2):
+        codec.derive_key("pw-cache", os.urandom(16))
+    assert len(codec._key_cache) == codec.KEY_CACHE_MAX
+    assert all(isinstance(k[0], bytes) and k[0] != b"pw-cache" for k in codec._key_cache)
+    assert all(k != "pw-cache" for k in codec._encrypt_salt_cache)
+    # a hit refreshes the entry so it is evicted last
+    salt = os.urandom(16)
+    codec.derive_key("pw-cache", salt)
+    for _ in range(codec.KEY_CACHE_MAX - 1):
+        codec.derive_key("pw-cache", os.urandom(16))
+    assert (codec._password_id("pw-cache"), salt) in codec._key_cache
+    codec._key_cache.clear()

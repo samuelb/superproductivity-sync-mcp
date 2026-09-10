@@ -121,6 +121,16 @@ class NextcloudDav:
         parts = [p for p in self.sync_folder.split("/") if p]
         return self.base_url + "/".join(quote(p, safe="") for p in parts)
 
+    def _display(self, url: str) -> str:
+        """Path relative to the DAV root for error messages: no host, no user id.
+
+        Tool errors are relayed to MCP clients verbatim; they get the file name,
+        not the Nextcloud account behind it.
+        """
+        if url.startswith(self.base_url):
+            return unquote(url[len(self.base_url) :]) or "/"
+        return unquote(urlparse(url).path)
+
     # --- low level ---------------------------------------------------------
 
     @staticmethod
@@ -149,7 +159,7 @@ class NextcloudDav:
                 await self._backoff(attempt, f"{method} {url}: HTTP {resp.status_code}")
                 continue
             break
-        return self._raise_for_status(resp, url)
+        return self._raise_for_status(resp, self._display(url))
 
     async def _backoff(self, attempt: int, what: str) -> None:
         delay = self.retry_backoff * (2 ** (attempt - 1))
@@ -158,15 +168,15 @@ class NextcloudDav:
             await asyncio.sleep(delay)
 
     @staticmethod
-    def _raise_for_status(resp: httpx.Response, url: str) -> httpx.Response:
+    def _raise_for_status(resp: httpx.Response, name: str) -> httpx.Response:
         if resp.status_code == 401:
             raise AuthFailed("Nextcloud rejected the credentials (HTTP 401)")
         if resp.status_code == 404:
-            raise NotFound(url)
+            raise NotFound(name)
         if resp.status_code == 412:
-            raise PreconditionFailed(url)
+            raise PreconditionFailed(name)
         if resp.status_code == 423:
-            raise Locked(url)
+            raise Locked(name)
         return resp
 
     @staticmethod
@@ -298,7 +308,7 @@ class NextcloudDav:
             return
         if resp.status_code in (201, 200, 301, 405, 409):
             return
-        raise HttpError(resp.status_code, "MKCOL", url, resp.text)
+        raise HttpError(resp.status_code, "MKCOL", self._display(url), resp.text)
 
     async def test_connection(self) -> None:
         """PROPFIND the user's DAV root: checks URL, credentials and user id."""

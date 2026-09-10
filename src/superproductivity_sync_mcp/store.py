@@ -6,9 +6,10 @@ Write cycle (mirrors ``FileBasedSyncAdapterService._uploadOps``):
 2. Run the mutation against a deep copy of the snapshot; it emits operations.
 3. Build the new envelope: ``syncVersion + 1``, ops tagged with that ``sv``,
    vector clock incremented for this client per op, ``recentOps`` trimmed.
-4. Write the previous content to ``sync-data.json.<UTC stamp>.bak`` (recovery
-   artifact); backups older than ``SP_BACKUP_RETENTION_DAYS`` are pruned
-   after a successful upload, at most once an hour.
+4. Write the previous content to ``sync-data.json.<UTC stamp>.sv<N>.bak``
+   (recovery artifact, ``N`` = the syncVersion being replaced); backups older
+   than ``SP_BACKUP_RETENTION_DAYS`` are pruned after a successful upload, at
+   most once an hour.
 5. Conditional PUT (``If-Match``); on 412 start over with the fresh remote.
 6. Take the new revision from the PUT response's ``OC-ETag``; optionally
    (``SP_VERIFY_UPLOAD``) re-download and compare hashes instead.
@@ -302,7 +303,7 @@ class SyncStore:
                 text = await asyncio.to_thread(self._encode, envelope, sf)
 
                 if self.write_backup:
-                    backup_name = backup_file_name(ctx.now_ms)
+                    backup_name = backup_file_name(ctx.now_ms, sf.sync_version)
                     try:
                         await self.dav.put(backup_name, sf.raw)
                     except Exception as e:  # noqa: BLE001

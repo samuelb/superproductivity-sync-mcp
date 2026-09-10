@@ -11,6 +11,9 @@ Format written by ``EncryptAndCompressHandlerService`` in the app::
   (1000 iterations, password as salt) and layout ``[iv 12][ciphertext + tag]``.
 * Encryption is applied after compression on write; decryption before
   decompression on read.
+* Derived keys are cached like the app's session cache (``session-cache.ts``):
+  one encrypt salt per password for the life of the process, a bounded decrypt
+  cache keyed by a hash of the password and the salt, never the password itself.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ import gzip
 import hashlib
 import json
 import re
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -114,34 +118,45 @@ def gunzip_from_b64(data: str) -> str:
 
 # --- encryption ------------------------------------------------------------
 
-_key_cache: dict[tuple[str, bytes], bytes] = {}
+KEY_CACHE_MAX = 100  # the app's SESSION_DECRYPT_CACHE_MAX_SIZE
+_key_cache: OrderedDict[tuple[bytes, bytes], bytes] = OrderedDict()
+
+
+def _password_id(password: str) -> bytes:
+    """Cache key component for a password that does not keep the password itself in memory."""
+    return hashlib.sha256(password.encode("utf-8")).digest()
 
 
 def derive_key(password: str, salt: bytes) -> bytes:
-    cache_key = (password, salt)
+    cache_key = (_password_id(password), salt)
     key = _key_cache.get(cache_key)
-    if key is None:
-        key = hash_secret_raw(
-            secret=password.encode("utf-8"),
-            salt=salt,
-            hash_len=KEY_LENGTH,
-            type=Argon2Type.ID,
-            **_ARGON2,
-        )
-        _key_cache[cache_key] = key
+    if key is not None:
+        _key_cache.move_to_end(cache_key)
+        return key
+    key = hash_secret_raw(
+        secret=password.encode("utf-8"),
+        salt=salt,
+        hash_len=KEY_LENGTH,
+        type=Argon2Type.ID,
+        **_ARGON2,
+    )
+    _key_cache[cache_key] = key
+    while len(_key_cache) > KEY_CACHE_MAX:
+        _key_cache.popitem(last=False)
     return key
 
 
-_encrypt_salt_cache: dict[str, bytes] = {}
+_encrypt_salt_cache: dict[bytes, bytes] = {}
 
 
 def encrypt(text: str, password: str) -> str:
     import os
 
-    salt = _encrypt_salt_cache.get(password)
+    pid = _password_id(password)
+    salt = _encrypt_salt_cache.get(pid)
     if salt is None:
         salt = os.urandom(SALT_LENGTH)
-        _encrypt_salt_cache[password] = salt
+        _encrypt_salt_cache[pid] = salt
     key = derive_key(password, salt)
     iv = os.urandom(IV_LENGTH)
     ct = AESGCM(key).encrypt(iv, text.encode("utf-8"), None)
