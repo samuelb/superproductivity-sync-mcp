@@ -10,6 +10,9 @@ one more Super Productivity installation: it reads the shared sync file
 changes back as entries of the same operation log. Every device picks the
 changes up on its next sync, exactly as if you had made them on another device.
 
+This is an unofficial project, not affiliated with or endorsed by Super
+Productivity or Nextcloud.
+
 ## How it works
 
 Super Productivity ≥ 17 syncs through an *operation log*. With the Nextcloud /
@@ -194,3 +197,9 @@ format, the reducer mirror or the security model.
   one that last synced (the app enforces this among devices anyway).
 * The split-file format ("Surgical sync") and the SuperSync server are not
   supported.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The reducer mirror and other parts are ported from
+Super Productivity (MIT, © Johannes Millan); see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
