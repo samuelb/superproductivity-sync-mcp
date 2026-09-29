@@ -126,6 +126,7 @@ All settings are environment variables (see `.env.example`).
 | `MCP_ALLOW_TOKEN_IN_PATH` | accept `https://host/t/<token>/mcp` for clients without header support (ChatGPT) |
 | `MCP_AUTH_DISABLED` | `true` only if your proxy authenticates every request |
 | `MCP_ALLOWED_HOSTS` | public host names for DNS-rebinding protection; empty = off (fine behind a proxy with tokens). When set, requests that carry an `Origin` header are rejected too, since no origins are allow-listed |
+| `FORWARDED_ALLOW_IPS` | peers whose `X-Forwarded-*` headers are trusted (default `*`: fine when only your proxy can reach the container; otherwise set the proxy's address) |
 | `SP_CACHE_TTL_SECONDS`, `SP_VERIFY_UPLOAD`, `SP_WRITE_BACKUP`, `SP_BACKUP_RETENTION_DAYS`, `SP_MAX_WRITE_ATTEMPTS`, `HTTP_TIMEOUT_SECONDS`, `HTTP_MAX_RETRIES`, `LOG_LEVEL`, `PORT` | tuning |
 
 Use one token per client so you can revoke them individually. Rejected requests

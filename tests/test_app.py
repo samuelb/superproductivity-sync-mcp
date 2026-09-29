@@ -119,6 +119,12 @@ def test_uvicorn_access_log_disabled(monkeypatch):
     assert _run_main(monkeypatch)["config"].access_log is False
 
 
+def test_trusted_proxies_follow_the_setting(monkeypatch):
+    assert _run_main(monkeypatch)["config"].forwarded_allow_ips == "*"
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "172.18.0.0/16")
+    assert _run_main(monkeypatch)["config"].forwarded_allow_ips == "172.18.0.0/16"
+
+
 def test_probe_and_server_share_one_event_loop(monkeypatch):
     """The store's pooled keep-alive connections belong to the loop that opened them.
 

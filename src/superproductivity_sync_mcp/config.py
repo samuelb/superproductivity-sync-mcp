@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/data")
     host: str = "0.0.0.0"
     port: int = 8000
+    forwarded_allow_ips: str = Field(
+        default="*",
+        description="Peers whose X-Forwarded-For/-Proto headers are trusted (comma separated IPs or networks)",
+    )
     log_level: str = "INFO"
 
     @field_validator("nextcloud_url")
