@@ -194,6 +194,9 @@ format, the reducer mirror or the security model.
 * Operations are stamped with the schema version found in the remote file, so
   all your devices must run a Super Productivity version at least as new as the
   one that last synced (the app enforces this among devices anyway).
+* When your devices move to a Super Productivity release with a newer data
+  schema than this server knows (currently schema 4, app 18.21–18.22), writes
+  are refused until the server is updated. Reading keeps working.
 * The split-file format ("Surgical sync") and the SuperSync server are not
   supported.
 

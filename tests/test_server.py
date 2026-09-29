@@ -98,3 +98,21 @@ async def test_unreachable_sync_file_is_reported(server, store, fake_dav):
 async def test_argument_validation_is_reported(server):
     err = await call(server, "create_task", title="x", time_estimate_minutes=-5)
     assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
+
+
+async def test_newer_schema_is_read_only(server, store, fake_dav):
+    """ADR-0006: files from an app with a newer data schema are read, never written."""
+    from superproductivity_sync_mcp import codec
+
+    from .conftest import base_envelope
+
+    env = base_envelope()
+    env["schemaVersion"] = 5
+    fake_dav.files[f"{BASE}/sync-data.json"] = codec.encode_sync_file(
+        env, codec.PrefixFlags(False, False, 2), None
+    ).encode()
+    assert not isinstance(await call(server, "get_today"), ToolError)
+    err = await call(server, "create_task", title="Blocked")
+    assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
+    assert "schema 5" in str(err) and "update the server" in str(err)
+    assert not fake_dav.puts

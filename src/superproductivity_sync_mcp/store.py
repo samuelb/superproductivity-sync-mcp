@@ -40,8 +40,10 @@ from .ops import PendingOp, build_compact_op
 from .syncfile import (
     FILE_VERSION,
     MAX_RECENT_OPS,
+    MAX_SCHEMA_VERSION,
     SYNC_FILE,
     SyncFile,
+    SyncFormatError,
     backup_file_name,
     backup_timestamp,
     increment_clock,
@@ -339,6 +341,12 @@ class SyncStore:
             last_error: Exception | None = None
             for attempt in range(1, self.max_attempts + 1):
                 sf = await self._download()
+                if sf.schema_version > MAX_SCHEMA_VERSION:
+                    raise SyncFormatError(
+                        f"The sync file uses Super Productivity data schema {sf.schema_version}; this server "
+                        f"only writes schema {MAX_SCHEMA_VERSION} and older. Reading still works; update the "
+                        "server to make changes."
+                    )
                 ctx = await asyncio.to_thread(self.context_for, sf)
                 result = fn(ctx)
                 if not ctx.ops:

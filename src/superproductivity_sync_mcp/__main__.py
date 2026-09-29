@@ -11,6 +11,7 @@ import uvicorn
 from .app import create_app
 from .config import Settings
 from .store import SyncError, SyncStore
+from .syncfile import MAX_SCHEMA_VERSION
 from .webdav import AuthFailed, NotFound, WebDavError
 
 log = logging.getLogger(__name__)
@@ -45,6 +46,13 @@ async def _probe(store: SyncStore) -> None:
         len(sf.recent_ops),
         sf.data.get("clientId"),
     )
+    if sf.schema_version > MAX_SCHEMA_VERSION:
+        log.warning(
+            "sync-data.json uses data schema %d, newer than the %d this server supports: "
+            "read-only until the server is updated",
+            sf.schema_version,
+            MAX_SCHEMA_VERSION,
+        )
 
 
 async def _serve(store: SyncStore, config: uvicorn.Config) -> bool:
