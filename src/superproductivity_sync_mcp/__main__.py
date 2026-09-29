@@ -15,6 +15,9 @@ from .webdav import AuthFailed, NotFound, WebDavError
 
 log = logging.getLogger(__name__)
 
+# What uvicorn.run exits with when the server could not start (e.g. port in use).
+STARTUP_FAILURE = 3
+
 
 def _fail(message: str) -> None:
     print(f"Configuration error: {message}", file=sys.stderr)
@@ -44,6 +47,22 @@ async def _probe(store: SyncStore) -> None:
     )
 
 
+async def _serve(store: SyncStore, config: uvicorn.Config) -> bool:
+    """Probe, then serve, on one event loop; returns whether the server started.
+
+    The store's HTTP client pools keep-alive connections that belong to the
+    loop that opened them. Probing in an event loop of its own handed the first
+    tool call a connection of a closed loop ("Event loop is closed").
+    """
+    server = uvicorn.Server(config)
+    try:
+        await _probe(store)
+        await server.serve()
+    finally:
+        await store.aclose()
+    return server.started
+
+
 def main() -> None:
     try:
         settings = Settings()  # type: ignore[call-arg]
@@ -59,10 +78,8 @@ def main() -> None:
         store = SyncStore.from_settings(settings)
     except Exception as e:  # noqa: BLE001
         _fail(str(e))
-    asyncio.run(_probe(store))
-    app = create_app(settings, store=store)
-    uvicorn.run(
-        app,
+    config = uvicorn.Config(
+        create_app(settings, store=store),
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
@@ -72,6 +89,12 @@ def main() -> None:
         forwarded_allow_ips="*",
         timeout_keep_alive=75,
     )
+    try:
+        started = asyncio.run(_serve(store, config), loop_factory=config.get_loop_factory())
+    except KeyboardInterrupt:
+        return
+    if not started:
+        sys.exit(STARTUP_FAILURE)
 
 
 if __name__ == "__main__":

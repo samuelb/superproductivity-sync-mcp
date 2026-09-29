@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -84,23 +86,53 @@ async def test_mcp_end_to_end(store, fake_dav):
                 assert res.is_error
 
 
-def test_uvicorn_access_log_disabled(monkeypatch):
-    """Path tokens (/t/<token>/mcp) must never reach the access log."""
+def _run_main(monkeypatch, *, started: bool = True) -> dict:
+    """Run main() with the probe, the store and uvicorn's serve() stubbed; return what they saw."""
     import superproductivity_sync_mcp.__main__ as entry
 
-    captured = {}
-    monkeypatch.setattr(entry.uvicorn, "run", lambda app, **kw: captured.update(kw))
+    seen: dict = {}
+
+    class Store:
+        async def aclose(self):
+            seen["aclose_loop"] = asyncio.get_running_loop()
+
+    async def probe(store):
+        seen["probe_loop"] = asyncio.get_running_loop()
+
+    async def serve(self, sockets=None):
+        seen["serve_loop"] = asyncio.get_running_loop()
+        seen["config"] = self.config
+        self.started = started
+
+    monkeypatch.setattr(entry.uvicorn.Server, "serve", serve)
     monkeypatch.setattr(entry, "create_app", lambda settings, store: object())
-    monkeypatch.setattr(entry.SyncStore, "from_settings", classmethod(lambda cls, s: object()))
-
-    async def no_probe(store):
-        return None
-
-    monkeypatch.setattr(entry, "_probe", no_probe)
+    monkeypatch.setattr(entry.SyncStore, "from_settings", classmethod(lambda cls, s: Store()))
+    monkeypatch.setattr(entry, "_probe", probe)
     for k in ("NEXTCLOUD_URL", "NEXTCLOUD_USER", "NEXTCLOUD_PASSWORD", "MCP_AUTH_TOKENS"):
         monkeypatch.setenv(k, "https://cloud.example.com" if k == "NEXTCLOUD_URL" else "secret-token-1234567")
     entry.main()
-    assert captured["access_log"] is False
+    return seen
+
+
+def test_uvicorn_access_log_disabled(monkeypatch):
+    """Path tokens (/t/<token>/mcp) must never reach the access log."""
+    assert _run_main(monkeypatch)["config"].access_log is False
+
+
+def test_probe_and_server_share_one_event_loop(monkeypatch):
+    """The store's pooled keep-alive connections belong to the loop that opened them.
+
+    Regression: the probe ran in an event loop of its own, and the first tool
+    call after start-up failed with "Event loop is closed".
+    """
+    seen = _run_main(monkeypatch)
+    assert seen["probe_loop"] is seen["serve_loop"] is seen["aclose_loop"]
+
+
+def test_exit_status_when_server_does_not_start(monkeypatch):
+    with pytest.raises(SystemExit) as ei:
+        _run_main(monkeypatch, started=False)
+    assert ei.value.code == 3
 
 
 async def test_startup_probe_classifies_errors(store, fake_dav, caplog):
