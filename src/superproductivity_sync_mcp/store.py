@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import itertools
 import json
 import logging
 import time
@@ -164,6 +165,13 @@ class SyncStore:
         self.backup_retention_days = max(1, backup_retention_days)
         self.max_attempts = max(1, max_attempts)
         self._cache: SyncFile | None = None
+        # Tickets order revisions by when they were requested: a download takes one
+        # when it starts, an upload when it finishes. The cache only accepts a
+        # higher ticket, so a download served before a write landed cannot replace
+        # the written revision when it completes after it.
+        self._tickets = itertools.count(1)
+        self._cache_ticket = 0
+        self._shared_download: asyncio.Task[SyncFile] | None = None
         self._lock = asyncio.Lock()
         self._last_prune: float | None = None
 
@@ -205,7 +213,17 @@ class SyncStore:
             raise SyncError(str(e)) from e
         return SyncFile(raw=raw, flags=flags, data=data, rev=rev, strong_etag=strong)
 
+    def _install(self, sf: SyncFile | None, ticket: int) -> None:
+        if ticket > self._cache_ticket:
+            self._cache, self._cache_ticket = sf, ticket
+
+    def _invalidate(self) -> None:
+        """Drop the cache, and ignore downloads that started before now."""
+        self._install(None, next(self._tickets))
+        self._shared_download = None
+
     async def _download(self) -> SyncFile:
+        ticket = next(self._tickets)
         try:
             got = await self.dav.get(SYNC_FILE)
         except NotFound as e:
@@ -214,8 +232,27 @@ class SyncStore:
                 "Productivity client first; this server never creates the initial file."
             ) from e
         sf = await asyncio.to_thread(self._decode, got.text, got.rev, got.strong_etag)
-        self._cache = sf
+        self._install(sf, ticket)
         return sf
+
+    async def _download_shared(self) -> SyncFile:
+        """One download for all readers that miss the cache at the same time.
+
+        The download runs as its own task, so a reader that goes away (client
+        disconnect) neither cancels it for the others nor loses its result.
+        """
+        task = self._shared_download
+        if task is None:
+            task = asyncio.create_task(self._download())
+            task.add_done_callback(self._shared_download_done)
+            self._shared_download = task
+        return await asyncio.shield(task)
+
+    def _shared_download_done(self, task: asyncio.Task[SyncFile]) -> None:
+        if self._shared_download is task:
+            self._shared_download = None
+        if not task.cancelled():
+            task.exception()  # every waiter re-raises it; mark it retrieved for the rest
 
     async def load(self, *, force: bool = False) -> SyncFile:
         cached = self._cache
@@ -231,7 +268,9 @@ class SyncStore:
             if etag is not None and etag == cached.strong_etag:
                 cached.fetched_at = time.monotonic()
                 return cached
-        return await self._download()
+        if force:
+            return await self._download()
+        return await self._download_shared()
 
     def now_ms(self) -> int:
         return int(time.time() * 1000)
@@ -331,7 +370,7 @@ class SyncStore:
                         attempt,
                         self.max_attempts,
                     )
-                    self._cache = None
+                    self._invalidate()
                     continue
 
                 if self.verify_upload or (put_etag is None and sf.strong_etag):
@@ -341,7 +380,7 @@ class SyncStore:
                     if codec.md5_hex(verify.text) != codec.md5_hex(text):
                         last_error = ConflictError("Upload verification failed; remote content differs")
                         log.warning("%s (attempt %d/%d)", last_error, attempt, self.max_attempts)
-                        self._cache = None
+                        self._invalidate()
                         continue
                     rev, strong = verify.rev, verify.strong_etag
                 elif put_etag:
@@ -351,7 +390,12 @@ class SyncStore:
 
                 self.identity.counter = envelope["vectorClock"][self.identity.client_id]
                 self.identity.save()
-                self._cache = SyncFile(raw=text, flags=sf.flags, data=envelope, rev=rev, strong_etag=strong)
+                self._install(
+                    SyncFile(raw=text, flags=sf.flags, data=envelope, rev=rev, strong_etag=strong),
+                    next(self._tickets),
+                )
+                # Readers arriving now must not join a download that predates this write.
+                self._shared_download = None
                 log.info(
                     "Uploaded %d op(s); syncVersion %d -> %d",
                     len(ctx.ops),

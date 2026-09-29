@@ -25,6 +25,9 @@ class FakeDav:
     deletes: list[str] = field(default_factory=list)
     # Set to a callable to mutate state between the client's GET and PUT.
     on_put: object = None
+    # Set to an async callable to hold a GET response after its body was read
+    # (a download served before a concurrent write lands, delivered after it).
+    on_get: object = None
     # Simulate an unknown user id: PROPFIND on the DAV root returns 404.
     propfind_root_missing: bool = False
     # Number of upcoming PUTs on sync-data.json to reject with 423 (file lock).
@@ -40,10 +43,10 @@ class FakeDav:
             self.gets += 1
             if path not in self.files:
                 return Response(status_code=404)
-            return Response(
-                self.files[path],
-                headers={"OC-ETag": self.etag(path), "ETag": self.etag(path)[:-1] + '-gzip"'},
-            )
+            body, etag = self.files[path], self.etag(path)
+            if callable(self.on_get):
+                await self.on_get(self, path)
+            return Response(body, headers={"OC-ETag": etag, "ETag": etag[:-1] + '-gzip"'})
         if method == "PROPFIND":
             self.propfinds += 1
             prefix = path.rstrip("/") + "/"

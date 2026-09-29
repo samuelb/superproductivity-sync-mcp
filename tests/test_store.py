@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -116,6 +118,46 @@ async def test_cache_uses_etag_precheck(store, fake_dav):
     gets = fake_dav.gets
     await store.load()
     assert fake_dav.gets == gets and fake_dav.propfinds >= 1
+
+
+async def test_read_overlapping_a_write_keeps_the_written_revision(store, fake_dav):
+    """Regression: a download served before a write but finishing after it replaced the
+    cache with the old revision, hiding the agent's own write from its next reads."""
+    store.cache_ttl = 10.0
+    release = asyncio.Event()
+
+    async def hold_first_get(dav, path):
+        dav.on_get = None
+        await release.wait()
+
+    fake_dav.on_get = hold_first_get
+    read = asyncio.create_task(store.load())
+    await asyncio.sleep(0.01)
+    created = await store.mutate(lambda ctx: m.create_task(ctx, title="written meanwhile"))
+    release.set()
+    assert (await read).sync_version == 7  # the reader itself saw the file as it was
+    sf = await store.load()
+    assert sf.sync_version == 8 and created["id"] in sf.state["task"]["entities"]
+
+
+async def slow_get(dav, path):
+    await asyncio.sleep(0.01)  # the in-process transport never yields otherwise
+
+
+async def test_concurrent_reads_share_one_download(store, fake_dav):
+    fake_dav.on_get = slow_get
+    results = await asyncio.gather(*(store.load() for _ in range(5)))
+    assert fake_dav.gets == 1 and all(r is results[0] for r in results)
+
+
+async def test_shared_download_failure_reaches_every_reader(store, fake_dav):
+    fake_dav.files[f"{BASE}/sync-data.json"] = b"not a sync file"
+    fake_dav.on_get = slow_get
+    results = await asyncio.gather(*(store.load() for _ in range(3)), return_exceptions=True)
+    assert fake_dav.gets == 1 and all(isinstance(r, SyncError) for r in results)
+    with pytest.raises(SyncError):  # a failed download is not shared with later reads
+        await store.load()
+    assert fake_dav.gets == 2
 
 
 async def test_recent_ops_trimmed(store, fake_dav):
