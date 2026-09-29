@@ -21,7 +21,7 @@ WebDAV provider the whole log lives in one file in your sync folder:
 ```
 sync-data.json      pf_2__{ version: 2, syncVersion, vectorClock, state, archiveYoung,
                             archiveOld, recentOps: [...], ... }
-sync-data.json.<UTC stamp>.bak
+sync-data.json.<UTC stamp>.sv<N>.bak
                     previous content before each write (recovery artifacts,
                     kept for SP_BACKUP_RETENTION_DAYS, default 7)
 ```
@@ -36,7 +36,7 @@ For every write this server:
 2. applies the change to a copy of the snapshot with a faithful port of the
    app's reducers, and appends the matching operation(s) with its own vector
    clock component,
-3. writes the old content to a timestamped `sync-data.json.<stamp>.bak` and uploads the new file with
+3. writes the old content to a timestamped `sync-data.json.<stamp>.sv<N>.bak` and uploads the new file with
    `If-Match`, keeping the etag Nextcloud returns as the new revision. On a
    concurrent write it starts over from the fresh remote (up to 3 attempts);
    transient WebDAV errors are retried with a short backoff.
@@ -62,7 +62,7 @@ or tags (use the app for those).
 
 ## Requirements
 
-* Super Productivity **18.x** with the **Nextcloud** (or WebDAV) sync provider
+* Super Productivity **18.x** (tested with 18.21 and 18.22) with the **Nextcloud** (or WebDAV) sync provider
   and the default single-file format ("Surgical sync" / split files **off**).
   At least one device must have synced once so that `sync-data.json` exists.
 * A Nextcloud **app password** for the same account
