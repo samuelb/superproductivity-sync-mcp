@@ -73,18 +73,17 @@ or tags (use the app for those).
 ## Deployment
 
 Images are built by GitHub Actions and published to the GitHub Container
-Registry as `ghcr.io/samuelb/superproductivity-sync-mcp` (tags: `main` for the latest commit on
-`main`, `sha-<commit>`, and `v1.2.3` / `1.2` / `latest` for release tags). The
-package inherits the repository's private visibility, so the deployment host
-needs a login with a token that has `read:packages`:
+Registry as `ghcr.io/samuelb/superproductivity-sync-mcp` for `linux/amd64` and
+`linux/arm64`. Tags: `latest`, `1.2.3` and `1.2` for releases, `main` for the
+latest commit on `main`, and `sha-<commit>`. `docker-compose.yml` pulls `main`
+unless `IMAGE_TAG` is set.
 
 ```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
-git clone git@github.com:samuelb/superproductivity-sync-mcp.git && cd superproductivity-sync-mcp
+git clone https://github.com/samuelb/superproductivity-sync-mcp.git && cd superproductivity-sync-mcp
 cp .env.example .env
 $EDITOR .env                      # Nextcloud credentials, sync folder, tokens
 openssl rand -hex 32              # -> MCP_AUTH_TOKENS
-docker compose pull && docker compose up -d      # IMAGE_TAG=v0.1.0 to pin a release
+docker compose pull && docker compose up -d      # IMAGE_TAG=0.1.0 to pin a release
 docker compose logs -f sync-mcp
 curl -s http://<container>:8000/healthz   # from inside the proxy network
 ```

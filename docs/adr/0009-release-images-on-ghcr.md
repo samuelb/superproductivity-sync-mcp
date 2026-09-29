@@ -1,6 +1,6 @@
 # ADR-0009: Build and publish container images with GitHub Actions to GHCR
 
-- **Status:** Accepted
+- **Status:** Accepted; the private visibility is superseded by ADR-0013
 - **Date:** 2026-09-07
 - **Sources:** `.github/workflows/ci.yml`, `docker-compose.yml`, `README.md`
 
@@ -26,7 +26,8 @@ container registry with the same access control.
 ## Consequences
 
 - The package is private like the repo; pulling requires `docker login ghcr.io`
-  with a `read:packages` token on the deployment host.
+  with a `read:packages` token on the deployment host. (Superseded by ADR-0013:
+  repository and package are public.)
 - `uv.lock` must be committed and current (`--frozen`), otherwise CI fails.
 - Build cache lives in GitHub Actions cache; first multi-arch builds are slow.
 - Dependabot keeps actions, the base image and the uv lockfile current via

@@ -21,7 +21,8 @@ mark the old one superseded in the same commit. Use `0000-template.md`.
 | [0006](0006-schema-version-follows-remote-file.md) | Stamp operations with the schema version of the remote file | Accepted |
 | [0007](0007-unsupported-formats.md) | Rejected — split-file format, SuperSync, initial file creation | Accepted |
 | [0008](0008-deployment-docker-behind-proxy.md) | Deployment as a non-root container behind an external reverse proxy | Accepted |
-| [0009](0009-release-images-on-ghcr.md) | Build and publish container images with GitHub Actions to GHCR | Accepted |
+| [0009](0009-release-images-on-ghcr.md) | Build and publish container images with GitHub Actions to GHCR | Accepted; visibility superseded by 0013 |
 | [0010](0010-put-etag-and-transient-retries.md) | Take the revision from the PUT response and retry transient WebDAV failures | Accepted |
 | [0011](0011-tool-error-reporting.md) | Report anticipated tool failures as `ToolError` through one wrapper | Accepted |
 | [0012](0012-timestamped-backup-history.md) | Keep a week of timestamped backups instead of one `.bak` | Accepted |
+| [0013](0013-public-repository-and-image.md) | Publish the repository and the container image | Accepted |

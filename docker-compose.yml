@@ -6,8 +6,8 @@
 services:
   sync-mcp:
     # Published by .github/workflows/ci.yml. Override the tag with IMAGE_TAG
-    # (e.g. a release `v0.1.0` or `sha-<commit>`). Private packages need
-    # `docker login ghcr.io` first. To build locally instead: `docker compose build`.
+    # (a release such as `0.1.0`, `latest`, or `sha-<commit>`). To build
+    # locally instead: `docker compose build`.
     image: ghcr.io/samuelb/superproductivity-sync-mcp:${IMAGE_TAG:-main}
     build: .
     restart: unless-stopped
