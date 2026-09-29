@@ -124,6 +124,59 @@ def test_schedule_with_time_and_unschedule():
     assert st["tag"]["entities"]["TODAY"]["taskIds"] == ["t1"]
 
 
+def _with_today_section(st: dict) -> dict:
+    """Add a TODAY-tag section holding t1 (in Today) and its sub-task s1."""
+    st["section"]["ids"].append("secT")
+    st["section"]["entities"]["secT"] = {
+        "id": "secT",
+        "contextId": "TODAY",
+        "contextType": "TAG",
+        "title": "Morning",
+        "taskIds": ["t1", "s1"],
+    }
+    return st
+
+
+def test_leaving_today_prunes_today_sections():
+    """section-shared.reducer.ts: ids that leave TODAY (plus sub-tasks) leave TODAY-tag sections."""
+    st = _with_today_section(base_state())
+    r.unschedule_task(st, "t1")
+    assert st["section"]["entities"]["secT"]["taskIds"] == []
+    assert st["section"]["entities"]["sec1"]["taskIds"] == ["t2"]  # project section untouched
+
+    st = _with_today_section(base_state())
+    r.plan_task_for_day(st, st["task"]["entities"]["t1"], "2026-09-09", is_add_to_top=False, today=TODAY)
+    assert st["section"]["entities"]["secT"]["taskIds"] == []
+
+    st = _with_today_section(base_state())
+    r.schedule_task_with_time(st, "t1", 1757260800000, is_scheduled_for_today=False)
+    assert st["section"]["entities"]["secT"]["taskIds"] == []
+
+
+def test_staying_in_today_keeps_today_sections():
+    st = _with_today_section(base_state())
+    r.plan_task_for_day(st, st["task"]["entities"]["t1"], TODAY, is_add_to_top=True, today=TODAY)
+    r.schedule_task_with_time(st, "t1", 1757260800000, is_scheduled_for_today=True)
+    r.update_task(st, "t1", {"isDone": True}, today=TODAY, now_ms=1)
+    assert st["section"]["entities"]["secT"]["taskIds"] == ["t1", "s1"]
+
+
+def test_schedule_with_time_unchanged_still_clears_planner_days():
+    """planner.reducer drops the task from every day even when the scheduling meta-reducer is a no-op."""
+    st = base_state()
+    st["task"]["entities"]["t2"]["dueWithTime"] = 1757260800000
+    r.schedule_task_with_time(st, "t2", 1757260800000, is_scheduled_for_today=False)
+    assert st["planner"]["days"]["2026-09-09"] == []
+
+
+def test_schedule_with_time_clears_stored_null_remind_at():
+    """`remindAt: null` is not `=== undefined` upstream, so the no-op shortcut does not apply."""
+    st = base_state()
+    st["task"]["entities"]["t2"].update(dueWithTime=1757260800000, remindAt=None)
+    r.schedule_task_with_time(st, "t2", 1757260800000, is_scheduled_for_today=False)
+    assert "remindAt" not in st["task"]["entities"]["t2"]
+
+
 def test_delete_task_cascades():
     st = base_state()
     t1 = st["task"]["entities"]["t1"]

@@ -11,6 +11,8 @@ NgRx writing ``undefined``.
 
 from __future__ import annotations
 
+import functools
+from collections.abc import Callable
 from typing import Any
 
 TODAY_TAG_ID = "TODAY"
@@ -287,7 +289,8 @@ def filter_out_today_tag(tag_ids: list[str]) -> list[str]:
     return [i for i in tag_ids if i != TODAY_TAG_ID]
 
 
-def _sections_remove(state: dict[str, Any], task_ids: list[str], project_id: str | None = None) -> None:
+def _sections_remove(state: dict[str, Any], task_ids: list[str], context: tuple[str, str] | None = None) -> None:
+    """Drop ``task_ids`` from every section, or only from those of ``(contextType, contextId)``."""
     sections = state.get("section")
     if not isinstance(sections, dict) or not isinstance(sections.get("entities"), dict):
         return
@@ -296,7 +299,7 @@ def _sections_remove(state: dict[str, Any], task_ids: list[str], project_id: str
         s = sections["entities"].get(sid)
         if not s:
             continue
-        if project_id is not None and (s.get("contextType") != "PROJECT" or s.get("contextId") != project_id):
+        if context is not None and (s.get("contextType"), s.get("contextId")) != context:
             continue
         ids = s.get("taskIds") or []
         filtered = [i for i in ids if i not in ts]
@@ -304,9 +307,41 @@ def _sections_remove(state: dict[str, Any], task_ids: list[str], project_id: str
             s["taskIds"] = filtered
 
 
+def _today_task_ids(state: dict[str, Any]) -> list[str]:
+    tags = state.get("tag")
+    if not isinstance(tags, dict) or not isinstance(tags.get("entities"), dict):
+        return []
+    return list((get_entity(tags, TODAY_TAG_ID) or {}).get("taskIds") or [])
+
+
+def prune_sections_left_today[F: Callable[..., None]](fn: F) -> F:
+    """Port of ``sectionSharedMetaReducer``'s post-reducer step (section-shared.reducer.ts).
+
+    The meta-reducer wraps every action: ids that left ``TODAY_TAG.taskIds``,
+    plus their sub-tasks, are stripped from the TODAY-tag sections. Wrap every
+    reducer here that writes the TODAY tag's ``taskIds``.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> None:
+        before = _today_task_ids(state)
+        fn(state, *args, **kwargs)
+        # The meta-reducer is a no-op unless every slice it reads exists.
+        if not before or not all(isinstance(state.get(k), dict) for k in ("task", "tag", "project", "section")):
+            return
+        after = set(_today_task_ids(state))
+        removed = [i for i in before if i not in after]
+        if removed:
+            affected = collect_task_and_sub_task_ids(state, removed)
+            _sections_remove(state, affected, context=("TAG", TODAY_TAG_ID))
+
+    return wrapper  # type: ignore[return-value]
+
+
 # --- TASK: add / update / delete (task-shared-crud.reducer.ts) --------------
 
 
+@prune_sections_left_today
 def add_task(
     state: dict[str, Any],
     task: dict[str, Any],
@@ -393,6 +428,7 @@ def _handle_tag_updates(state: dict[str, Any], task_id: str, old: list[str], new
             tag["taskIds"] = unique([task_id, *(tag.get("taskIds") or [])])
 
 
+@prune_sections_left_today
 def update_task(state: dict[str, Any], task_id: str, changes: dict[str, Any], *, today: str, now_ms: int) -> None:
     """Port of ``handleUpdateTask`` for the change keys this server emits
     (title, notes, isDone/doneOn, timeEstimate, tagIds)."""
@@ -500,6 +536,7 @@ def _apply_dismissals(tasks: dict[str, Any], dismissals: list[tuple[str, str]]) 
         tasks["dismissedCalendarAutoImportEventIdsByProvider"] = by_provider
 
 
+@prune_sections_left_today
 def delete_task(state: dict[str, Any], task_with_subtasks: dict[str, Any]) -> None:
     """Port of ``handleDeleteTask`` plus the section meta-reducer's pruning."""
     task = task_with_subtasks
@@ -519,7 +556,11 @@ def delete_task(state: dict[str, Any], task_with_subtasks: dict[str, Any]) -> No
 # --- TASK: scheduling (task-shared-scheduling + planner reducers) ------------
 
 
+@prune_sections_left_today
 def unschedule_task(state: dict[str, Any], task_id: str) -> None:
+    """Port of ``handleUnScheduleTask`` (without isLeaveInToday) + planner.reducer's handler."""
+    # planner.reducer: on(unscheduleTask) removes the task from every day.
+    remove_tasks_from_planner_days(state, [task_id])
     tasks = slice_(state, "task")
     if get_entity(tasks, task_id) is None:
         return
@@ -528,12 +569,16 @@ def unschedule_task(state: dict[str, Any], task_id: str) -> None:
     today_tag = get_entity(tags, TODAY_TAG_ID)
     if today_tag is not None and task_id in today_tag.get("taskIds", []):
         today_tag["taskIds"] = [i for i in today_tag["taskIds"] if i != task_id]
-    remove_tasks_from_planner_days(state, [task_id])
 
 
+@prune_sections_left_today
 def schedule_task_with_time(
     state: dict[str, Any], task_id: str, due_with_time: int, *, is_scheduled_for_today: bool
 ) -> None:
+    """Port of ``handleScheduleTaskWithTime`` + planner.reducer's handler (no remindAt)."""
+    # planner.reducer: on(scheduleTaskWithTime) removes the task from every day,
+    # independently of the meta-reducer's early returns below.
+    remove_tasks_from_planner_days(state, [task_id])
     tasks = slice_(state, "task")
     current = get_entity(tasks, task_id)
     if current is None:
@@ -543,7 +588,8 @@ def schedule_task_with_time(
     in_today = bool(today_tag and task_id in today_tag.get("taskIds", []))
     if (
         current.get("dueWithTime") == due_with_time
-        and current.get("remindAt") is None
+        # `currentTask.remindAt === remindAt` with remindAt undefined: a stored null does not match.
+        and "remindAt" not in current
         and is_scheduled_for_today == in_today
     ):
         return
@@ -554,10 +600,9 @@ def schedule_task_with_time(
             if is_scheduled_for_today
             else [i for i in today_tag.get("taskIds", []) if i != task_id]
         )
-    # planner.reducer: on(scheduleTaskWithTime) removes the task from every day
-    remove_tasks_from_planner_days(state, [task_id])
 
 
+@prune_sections_left_today
 def plan_task_for_day(
     state: dict[str, Any], task: dict[str, Any], day: str, *, is_add_to_top: bool, today: str
 ) -> None:
@@ -599,7 +644,7 @@ def move_to_other_project(state: dict[str, Any], task: dict[str, Any], target_pr
     canonical = get_entity(tasks, task["id"])
     old_project_id = (canonical or {}).get("projectId") or task.get("projectId")
     if old_project_id and old_project_id != target_project_id:
-        _sections_remove(state, collect_task_and_sub_task_ids(state, [task["id"]]), old_project_id)
+        _sections_remove(state, collect_task_and_sub_task_ids(state, [task["id"]]), ("PROJECT", old_project_id))
     sub_ids = unique([*((canonical or {}).get("subTaskIds") or []), *(task.get("subTaskIds") or [])])
     all_ids = unique([task["id"], *sub_ids])
     current_project = get_entity(projects, old_project_id)

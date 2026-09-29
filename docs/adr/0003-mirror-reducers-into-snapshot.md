@@ -32,6 +32,11 @@ key, the JSON equivalent of NgRx writing `undefined`):
 | `[Tag] Add Tag` (GA) | tag reducer + menu-tree `addTag` |
 | `[Note] Add/Update/Delete Note` (NA/NU/ND) | note reducer + project `noteIds` |
 
+`sectionSharedMetaReducer` also runs a post-step after *every* action: ids that
+left `TODAY_TAG.taskIds`, plus their sub-tasks, are stripped from TODAY-tag
+sections. Every reducer here that writes the TODAY tag carries
+`@prune_sections_left_today` to mirror it.
+
 Field clearing never travels as `undefined` in a payload (JSON drops it); we
 use dedicated actions (`unscheduleTask`, `planTaskForDay`) like the app does.
 
