@@ -68,6 +68,56 @@ def test_subtask_rules():
     assert ctx.ops[-1].action == "addSubTask" and ctx.ops[-1].action_payload["parentId"] == "t1"
 
 
+def test_update_task_emits_only_the_given_changes():
+    ctx = ctx_for()
+    out = m.update_task(ctx, "t2", title="  Buy oat milk ", notes="2 l", time_estimate_ms=900000, tag_ids=["g1"])
+    op = ctx.ops[0]
+    assert op.action == "updateTask" and op.entity_id == "t2"
+    assert op.action_payload == {
+        "task": {
+            "id": "t2",
+            "changes": {"title": "Buy oat milk", "notes": "2 l", "timeEstimate": 900000, "tagIds": ["g1"]},
+        }
+    }
+    t2 = ctx.state["task"]["entities"]["t2"]
+    assert (t2["title"], t2["notes"], t2["timeEstimate"], t2["tagIds"]) == ("Buy oat milk", "2 l", 900000, ["g1"])
+    assert t2["modified"] == ctx.now_ms and t2["dueDay"] == "2026-09-09"  # untouched fields stay
+    assert ctx.state["tag"]["entities"]["g1"]["taskIds"] == ["t2", "t1"]
+    assert out is t2
+
+
+def test_update_task_done_and_undone():
+    ctx = ctx_for()
+    m.update_task(ctx, "t1", is_done=True)
+    assert ctx.ops[0].action_payload == {"task": {"id": "t1", "changes": {"isDone": True, "doneOn": ctx.now_ms}}}
+    t1 = ctx.state["task"]["entities"]["t1"]
+    assert t1["isDone"] is True and t1["doneOn"] == ctx.now_ms
+    assert ctx.state["tag"]["entities"]["TODAY"]["taskIds"] == ["t1"]  # done tasks stay in Today
+    m.update_task(ctx, "t1", is_done=False)
+    assert ctx.ops[1].action_payload == {"task": {"id": "t1", "changes": {"isDone": False}}}
+    assert t1["isDone"] is False and "doneOn" not in t1
+
+
+def test_update_task_rejects_bad_input_without_emitting():
+    ctx = ctx_for()
+    for kwargs in ({"title": "  "}, {"time_estimate_ms": -1}, {"tag_ids": ["ghost"]}, {"tag_ids": ["TODAY"]}, {}):
+        with pytest.raises(m.MutationError):
+            m.update_task(ctx, "t1", **kwargs)
+    with pytest.raises(m.NotFoundError):
+        m.update_task(ctx, "nope", title="x")
+    assert not ctx.ops
+
+
+def test_unschedule_task_payload_and_state():
+    ctx = ctx_for()
+    out = m.unschedule_task(ctx, "t2")
+    op = ctx.ops[0]
+    assert op.action == "unscheduleTask" and op.action_payload == {"id": "t2", "today": "2026-09-07"}
+    assert "dueDay" not in out and ctx.state["planner"]["days"]["2026-09-09"] == []
+    m.unschedule_task(ctx, "t1")
+    assert ctx.state["tag"]["entities"]["TODAY"]["taskIds"] == []
+
+
 def test_validation_errors():
     ctx = ctx_for()
     with pytest.raises(m.NotFoundError):

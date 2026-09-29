@@ -116,3 +116,16 @@ async def test_newer_schema_is_read_only(server, store, fake_dav):
     assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
     assert "schema 5" in str(err) and "update the server" in str(err)
     assert not fake_dav.puts
+
+
+async def test_update_and_unschedule_through_the_tools(server, fake_dav):
+    from .conftest import decode_remote
+
+    res = await call(server, "update_task", task_id="t2", is_done=True, time_estimate_minutes=15)
+    assert not isinstance(res, ToolError)
+    res = await call(server, "unschedule_task", task_id="t2")
+    assert not isinstance(res, ToolError)
+    env = decode_remote(fake_dav)
+    assert [op["a"] for op in env["recentOps"][-2:]] == ["HU", "HSX"]
+    t2 = env["state"]["task"]["entities"]["t2"]
+    assert t2["isDone"] is True and t2["timeEstimate"] == 900000 and "dueDay" not in t2
