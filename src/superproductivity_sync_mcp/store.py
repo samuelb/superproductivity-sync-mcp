@@ -66,6 +66,14 @@ class ConflictError(SyncError):
     pass
 
 
+class UnreadableSyncFile(SyncError):
+    """The file was downloaded but cannot be used with this configuration.
+
+    Wrong or missing encryption password, an unsupported format, corrupt
+    content: retrying does not help, the operator has to act.
+    """
+
+
 @dataclass
 class ClientIdentity:
     client_id: str
@@ -208,11 +216,11 @@ class SyncStore:
         try:
             flags, data = codec.decode_sync_file(raw, self.password, encryption_expected=self.encryption_expected)
         except codec.CodecError as e:
-            raise SyncError(str(e)) from e
+            raise UnreadableSyncFile(str(e)) from e
         try:
             validate_envelope(data)
-        except Exception as e:  # noqa: BLE001
-            raise SyncError(str(e)) from e
+        except SyncFormatError as e:
+            raise UnreadableSyncFile(str(e)) from e
         return SyncFile(raw=raw, flags=flags, data=data, rev=rev, strong_etag=strong)
 
     def _install(self, sf: SyncFile | None, ticket: int) -> None:

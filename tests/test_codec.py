@@ -79,3 +79,14 @@ def test_key_cache_is_bounded_and_never_holds_the_password(monkeypatch):
         codec.derive_key("pw-cache", os.urandom(16))
     assert (codec._password_id("pw-cache"), salt) in codec._key_cache
     codec._key_cache.clear()
+
+
+@pytest.mark.parametrize(
+    ("raw", "password"),
+    [("pf_C2__AAAAbm90IGd6aXA=", None), ("pf_E2__A!!!", "pw")],
+    ids=["broken-gzip", "bad-base64"],
+)
+def test_corrupt_body_is_a_codec_error(raw, password):
+    """Regression: BadGzipFile / binascii.Error escaped decode_sync_file and crashed the tool."""
+    with pytest.raises(codec.CodecError, match="corrupt"):
+        codec.decode_sync_file(raw, password)

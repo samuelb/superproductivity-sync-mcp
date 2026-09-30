@@ -25,6 +25,10 @@ therefore a crash. The calling agent could not tell "task not found" from
     (traceback in the log) rather than be blamed on the caller.
   - `ConflictError`: "another device is writing; retry in a few seconds".
   - `AuthFailed`: credentials rejected; needs the operator.
+  - `UnreadableSyncFile` (a `SyncError`): the file was downloaded but the
+    password, its format or its content rule it out; needs the operator.
+    Added 2026-09-30: these used to fall into the next bullet and told the
+    agent to retry.
   - other `SyncError` / `WebDavError`: Nextcloud unreachable or unreadable;
     an `HttpError` names the status and file only, the response body (Sabre
     error XML with the account path, a maintenance page with the host) goes to

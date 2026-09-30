@@ -129,3 +129,27 @@ async def test_update_and_unschedule_through_the_tools(server, fake_dav):
     assert [op["a"] for op in env["recentOps"][-2:]] == ["HU", "HSX"]
     t2 = env["state"]["task"]["entities"]["t2"]
     assert t2["isDone"] is True and t2["timeEstimate"] == 900000 and "dueDay" not in t2
+
+
+@pytest.mark.parametrize(
+    ("body", "password", "detail"),
+    [
+        ({"version": 3, "format": "split"}, None, "Surgical sync"),
+        ({"version": 2}, "other-password", "wrong password"),
+        (None, None, "corrupt"),
+    ],
+    ids=["split-format", "wrong-password", "corrupt-body"],
+)
+async def test_unusable_sync_file_needs_the_operator(server, store, fake_dav, body, password, detail):
+    """Regression: these were reported as 'retry later', so agents retried in vain."""
+    from superproductivity_sync_mcp import codec
+
+    if body is None:
+        raw = "pf_C2__AAAAbm90IGd6aXA="  # compressed flag, not a gzip stream
+    else:
+        raw = codec.encode_sync_file(body, codec.PrefixFlags(False, password is not None, 2), password)
+    fake_dav.files[f"{BASE}/sync-data.json"] = raw.encode()
+    store.password = "configured-password" if password else None
+    err = await call(server, "get_overview")
+    assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
+    assert "needs the operator" in str(err) and "retry" not in str(err) and detail in str(err)

@@ -17,7 +17,7 @@ from . import mutations as m
 from . import queries as q
 from .config import Settings
 from .reducers import StateError
-from .store import ConflictError, SyncError, SyncStore
+from .store import ConflictError, SyncError, SyncStore, UnreadableSyncFile
 from .syncfile import SyncFormatError
 from .timeutil import InputError
 from .webdav import AuthFailed, WebDavError
@@ -78,6 +78,11 @@ def tool_errors[F: Callable[..., Awaitable[Any]]](fn: F) -> F:
         except AuthFailed as e:
             log.error("%s: %s", fn.__name__, e)
             raise ToolError(f"Nextcloud rejected the server's credentials; this needs the operator. ({e})") from e
+        except UnreadableSyncFile as e:
+            log.error("%s: %s", fn.__name__, e)
+            raise ToolError(
+                f"The sync file cannot be read with this server's settings; this needs the operator. ({e})"
+            ) from e
         except (SyncError, WebDavError) as e:
             log.warning("%s: %s", fn.__name__, e)
             raise ToolError(f"Could not reach or read the Nextcloud sync file; retry later. ({e})") from e
