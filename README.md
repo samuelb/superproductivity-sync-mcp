@@ -62,7 +62,7 @@ or tags (use the app for those).
 
 ## Requirements
 
-* Super Productivity **18.x** (tested with 18.21 and 18.22) with the **Nextcloud** (or WebDAV) sync provider
+* Super Productivity **18.x or 19.x** (tested with 18.21, 18.22 and 19.1) with the **Nextcloud** (or WebDAV) sync provider
   and the default single-file format ("Surgical sync" / split files **off**).
   At least one device must have synced once so that `sync-data.json` exists.
 * A Nextcloud **app password** for the same account
@@ -192,11 +192,15 @@ format, the reducer mirror or the security model.
   changes made on a device that has not synced yet are not visible.
 * If two devices edit the same task concurrently, Super Productivity's
   last-writer-wins conflict handling applies to this server's edits too.
+* If Super Productivity shows a sync-conflict dialog and you keep the local
+  data, that device force-uploads its state and discards remote changes it has
+  not pulled yet, including this server's. Since 19.1 the dialog also appears
+  when a bulk edit on a device collides with a remote change to the same task.
 * Operations are stamped with the schema version found in the remote file, so
   all your devices must run a Super Productivity version at least as new as the
   one that last synced (the app enforces this among devices anyway).
 * When your devices move to a Super Productivity release with a newer data
-  schema than this server knows (currently schema 4, app 18.21–18.22), writes
+  schema than this server knows (currently schema 4, app 18.21–19.1), writes
   are refused until the server is updated. Reading keeps working.
 * The split-file format ("Surgical sync") and the SuperSync server are not
   supported.

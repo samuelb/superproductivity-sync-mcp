@@ -10,7 +10,7 @@
 
 Every operation carries `schemaVersion`. A client blocks (cursor frozen, "update
 your app") on any op whose version is newer than its own `CURRENT_SCHEMA_VERSION`
-(4 in 18.21.x and 18.22.x), and migrates older ones. The devices themselves already have to
+(4 in 18.21.x through 19.1.x), and migrates older ones. The devices themselves already have to
 agree on a version to sync with each other.
 
 ## Decision

@@ -39,8 +39,8 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
   match the app's action creator and (b) apply the identical change to the
   snapshot via `reducers.py`, with a test in `tests/test_reducers.py`.
   Verify against the Super Productivity source of the targeted version
-  (currently 18.22.x; nothing emitted here differs from 18.21.x) — do not
-  guess reducer behaviour.
+  (currently 19.1.x; nothing emitted here differs from 18.21.x or 18.22.x) —
+  do not guess reducer behaviour.
 - Raise `syncfile.MAX_SCHEMA_VERSION` only after re-verifying every emitted
   action and reducer path against an app release with that schema (ADR-0006).
 - Op payloads must carry entities as they were *before* the reducer ran (what

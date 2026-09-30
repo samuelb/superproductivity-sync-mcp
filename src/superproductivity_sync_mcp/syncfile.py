@@ -15,7 +15,7 @@ FILE_VERSION = 2
 MAX_RECENT_OPS = 2000
 # Newest app data schema (``CURRENT_SCHEMA_VERSION`` in the app's
 # packages/shared-schema/src/schema-version.ts) whose reducers and payloads
-# were verified for this server: 18.21.x and 18.22.x. Files stamped with a
+# were verified for this server: 18.21.x, 18.22.x and 19.1.x. Files stamped with a
 # newer version are read, but never written (ADR-0006).
 MAX_SCHEMA_VERSION = 4
 

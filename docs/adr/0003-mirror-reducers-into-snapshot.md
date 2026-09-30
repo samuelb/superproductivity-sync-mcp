@@ -48,5 +48,6 @@ use dedicated actions (`unscheduleTask`, `planTaskForDay`) like the app does.
 - "today" is computed in `SP_TIMEZONE` with the user's start-of-next-day
   setting, mirroring `getDbDateStr`/`getStartOfNextDayDiffMs`.
 - Reducer behaviour must be re-verified against the app source when Super
-  Productivity changes; this server tracks 18.22.x (verified 2026-09-29:
-  nothing emitted here changed from 18.21.x).
+  Productivity changes; this server tracks 19.1.x (verified 2026-09-30:
+  nothing emitted here changed since 18.21.x; 19.x only changed the bulk
+  `deleteTasks` path, which this server does not emit).
