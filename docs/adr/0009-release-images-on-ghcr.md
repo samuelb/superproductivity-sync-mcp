@@ -19,7 +19,8 @@ container registry with the same access control.
   `linux/arm64`), authenticated with the workflow's `GITHUB_TOKEN`.
 - Tags: `main` (moving), `sha-<short sha>` (immutable), and for git tags
   `v<semver>`: `<version>`, `<major>.<minor>`, `latest`. A release is made by
-  pushing a `v*` tag.
+  pushing a `v*` tag, then publishing a GitHub Release with notes for it
+  (added 2026-09-30; the tag alone left the Releases page empty).
 - `docker-compose.yml` defaults to `ghcr.io/samuelb/superproductivity-sync-mcp:${IMAGE_TAG:-main}`
   and keeps `build: .` for local builds.
 
