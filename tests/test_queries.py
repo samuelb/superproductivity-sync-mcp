@@ -1,6 +1,9 @@
 from datetime import datetime
 
+import pytest
+
 from superproductivity_sync_mcp import queries as q
+from superproductivity_sync_mcp.timeutil import InputError
 
 from .conftest import TZ, base_state
 
@@ -58,6 +61,26 @@ def test_list_tasks_due_filters_include_timed_tasks():
     assert ids(q.list_tasks(st, due="unscheduled", **kw)) == ["t6"]
     assert ids(q.list_tasks(st, due="unscheduled", include_done=True, **kw)) == ["t3", "t6"]
     assert ids(q.list_tasks(st, due="2026-09-09", **kw)) == ["t2"]
+
+
+def test_list_tasks_due_accepts_every_day_form_and_rejects_typos():
+    """Regression: 'tomorrow', '+N' and typos silently matched nothing."""
+    st = state_with_timed_tasks()
+    st["task"]["entities"]["t6"]["dueDay"] = "2026-09-08"
+    kw = dict(tz=TZ, today=TODAY)
+    assert ids(q.list_tasks(st, due="tomorrow", **kw)) == ["t6"]
+    assert ids(q.list_tasks(st, due="+2", **kw)) == ["t2"]
+    assert ids(q.list_tasks(st, due=" Today ", **kw)) == ["t1", "t4"]
+    with pytest.raises(InputError, match="'overdue' or 'unscheduled'"):
+        q.list_tasks(st, due="next week", **kw)
+
+
+def test_list_tasks_today_tag_is_virtual():
+    """Regression: tasks never carry TODAY in tagIds, so tag_id='TODAY' listed nothing."""
+    st = state_with_timed_tasks()
+    kw = dict(tz=TZ, today=TODAY)
+    assert ids(q.list_tasks(st, tag_id="TODAY", **kw)) == ids(q.list_tasks(st, due="today", **kw)) == ["t1", "t4"]
+    assert "t4" in q.fetch(st, "tag:TODAY", tz=TZ, today=TODAY)["text"]
 
 
 def test_list_tasks_other_filters_and_ordering():

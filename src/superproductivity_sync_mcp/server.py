@@ -138,8 +138,9 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     @server.tool(
         annotations=RO,
         description=(
-            "List tasks with optional filters. `due` accepts 'today', 'overdue', 'unscheduled' or a "
-            "YYYY-MM-DD day. Sub-tasks are omitted unless include_subtasks is true."
+            "List tasks with optional filters. `due` accepts a day ('today', 'tomorrow', '+N' or "
+            "YYYY-MM-DD), 'overdue' or 'unscheduled'. tag_id 'TODAY' lists the tasks in Today. Sub-tasks "
+            "are omitted unless include_subtasks is true."
         ),
     )
     @tool_errors
@@ -147,7 +148,10 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
         project_id: Annotated[str | None, Field(description="Only tasks of this project")] = None,
         tag_id: Annotated[str | None, Field(description="Only tasks carrying this tag")] = None,
         include_done: Annotated[bool, Field(description="Include completed tasks")] = False,
-        due: Annotated[str | None, Field(description="'today' | 'overdue' | 'unscheduled' | YYYY-MM-DD")] = None,
+        due: Annotated[
+            str | None,
+            Field(description="'today' | 'tomorrow' | '+N' | YYYY-MM-DD | 'overdue' | 'unscheduled'"),
+        ] = None,
         query: Annotated[str | None, Field(description="Case-insensitive substring of title or notes")] = None,
         include_subtasks: Annotated[bool, Field(description="Also list sub-tasks")] = False,
         limit: Annotated[int, Field(ge=1, le=500)] = 100,

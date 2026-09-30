@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from . import reducers as r
-from .timeutil import db_date_str, ms_to_iso
+from .timeutil import InputError, db_date_str, ms_to_iso, resolve_day
 
 TODAY = r.TODAY_TAG_ID
 
@@ -172,6 +172,23 @@ def list_tasks(
 ) -> list[dict[str, Any]]:
     ids, ents = _entities(state, "task")
     _, projects = _entities(state, "project")
+    due_keyword = due_day_filter = None
+    if due:
+        d = due.strip().lower()
+        if d in ("overdue", "unscheduled"):
+            due_keyword = d
+        else:
+            try:
+                due_day_filter = resolve_day(d, today)
+            except InputError as e:
+                raise InputError(
+                    f"Invalid due filter {due!r}; use 'today', 'tomorrow', '+N', YYYY-MM-DD, 'overdue' or 'unscheduled'"
+                ) from e
+    today_ids: set[str] = set()
+    if tag_id == TODAY:
+        # Virtual tag: the TODAY list plus anything due today, as in today_view.
+        _, tags = _entities(state, "tag")
+        today_ids = set((tags.get(TODAY) or {}).get("taskIds") or [])
     ordered: list[str] = ids
     if project_id:
         p = projects.get(project_id) or {}
@@ -185,20 +202,20 @@ def list_tasks(
             continue
         if project_id and (t.get("projectId") or "") != project_id:
             continue
-        if tag_id and tag_id not in (t.get("tagIds") or []):
+        if tag_id == TODAY:
+            if tid not in today_ids and effective_due_day(t, tz) != today:
+                continue
+        elif tag_id and tag_id not in (t.get("tagIds") or []):
             continue
         if not include_done and t.get("isDone"):
             continue
-        if due:
-            d = due.lower()
+        if due_keyword or due_day_filter:
             due_day = effective_due_day(t, tz)
-            if d == "today" and due_day != today:
+            if due_keyword == "overdue" and not (due_day and due_day < today and not t.get("isDone")):
                 continue
-            if d == "overdue" and not (due_day and due_day < today and not t.get("isDone")):
+            if due_keyword == "unscheduled" and due_day is not None:
                 continue
-            if d == "unscheduled" and due_day is not None:
-                continue
-            if d not in ("today", "overdue", "unscheduled") and due_day != d:
+            if due_day_filter and due_day != due_day_filter:
                 continue
         if query and not _match(query, t.get("title"), t.get("notes")):
             continue
