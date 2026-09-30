@@ -238,7 +238,8 @@ def today_view(state: dict[str, Any], *, tz: ZoneInfo, today: str, now_ms: int) 
         if effective_due_day(t, tz) == today:
             ordered.append(tid)
             seen.add(tid)
-    todo, done = [], []
+    todo: list[dict[str, Any]] = []
+    done: list[dict[str, Any]] = []
     for tid in ordered:
         t = ents[tid]
         s = task_summary(state, t, tz=tz, today=today, include_notes=False, include_subtasks=True)

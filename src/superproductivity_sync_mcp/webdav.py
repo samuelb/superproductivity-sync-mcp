@@ -83,7 +83,7 @@ class Downloaded:
 
 
 def is_strong_etag(value: str | None) -> bool:
-    return bool(value) and bool(_STRONG_ETAG_RE.match(value.strip()))
+    return value is not None and bool(_STRONG_ETAG_RE.match(value.strip()))
 
 
 class NextcloudDav:

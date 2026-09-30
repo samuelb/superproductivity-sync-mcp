@@ -97,7 +97,12 @@ class TokenAuthMiddleware:
         addr = f"{client[0]}:{client[1]}" if client else "unknown"
         log.warning("Rejected %s %s from %s: %s", scope.get("method", "?"), self._redact_path(path), addr, reason)
 
-    async def __call__(self, scope, receive, send):  # type: ignore[no-untyped-def]
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Callable[[], Awaitable[Any]],
+        send: Callable[[Any], Awaitable[None]],
+    ) -> None:
         scope_type = scope["type"]
         if scope_type == "lifespan":
             await self.app(scope, receive, send)

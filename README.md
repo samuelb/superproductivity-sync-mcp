@@ -175,6 +175,7 @@ Any other client: streamable-HTTP transport, URL `/mcp`, bearer header.
 uv sync --extra dev
 uv run pytest
 uv run ruff check src tests && uv run ruff format --check src tests
+uv run mypy
 uv run superproductivity-sync-mcp   # needs a .env
 ```
 

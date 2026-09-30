@@ -462,8 +462,9 @@ def create_note(
         raise MutationError("Note content must not be empty")
     if project_id:
         require_project(state, project_id)
+    note_id = nanoid()
     note = {
-        "id": nanoid(),
+        "id": note_id,
         "projectId": project_id or None,
         "isPinnedToToday": bool(pin_to_today),
         "content": content,
@@ -471,7 +472,7 @@ def create_note(
         "modified": ctx.now_ms,
     }
     r.add_note(state, note)
-    ctx.emit("addNote", note["id"], {"note": note})
+    ctx.emit("addNote", note_id, {"note": note})
     return note
 
 

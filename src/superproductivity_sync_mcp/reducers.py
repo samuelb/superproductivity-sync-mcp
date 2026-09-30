@@ -154,10 +154,10 @@ def recalc_times_for_parent(tasks: dict[str, Any], parent_id: str) -> None:
 def remove_task_from_parent_side_effects(
     tasks: dict[str, Any], task: dict[str, Any], copy_times_after_last: bool = False
 ) -> None:
-    parent_id = task.get("parentId")
-    parent = get_entity(tasks, parent_id)
+    parent = get_entity(tasks, task.get("parentId"))
     if parent is None:
         return
+    parent_id: str = parent["id"]
     was_last = len(parent.get("subTaskIds", [])) == 1
     changes: dict[str, Any] = {"subTaskIds": [i for i in parent.get("subTaskIds", []) if i != task["id"]]}
     if was_last and copy_times_after_last:

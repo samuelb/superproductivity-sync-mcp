@@ -217,12 +217,13 @@ def decode_sync_file(
             "An encryption password is configured but the remote sync file is not encrypted. "
             "Set SP_ALLOW_PLAINTEXT=true if this is intended."
         )
-    if flags.is_encrypted and not password:
-        raise PasswordRequiredError(
-            "The sync file is encrypted; set SP_ENCRYPTION_PASSWORD to the password configured in Super Productivity."
-        )
     try:
         if flags.is_encrypted:
+            if not password:
+                raise PasswordRequiredError(
+                    "The sync file is encrypted; set SP_ENCRYPTION_PASSWORD to the password configured in "
+                    "Super Productivity."
+                )
             body = decrypt(body, password)
         if flags.is_compressed:
             body = gunzip_from_b64(body)

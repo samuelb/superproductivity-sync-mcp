@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import secrets
 import time
+from typing import TypeIs
 
 MIN_CLIENT_ID_LENGTH = 5  # operation-log.const.ts; incrementVectorClock throws below it
 _USABLE_CLIENT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -45,7 +46,7 @@ def generate_client_id() -> str:
     return "M_" + "".join(secrets.choice(_BASE62) for _ in range(6))
 
 
-def is_usable_client_id(value: object) -> bool:
+def is_usable_client_id(value: object) -> TypeIs[str]:
     """An id this server may use as its own: the shape the app mints."""
     return isinstance(value, str) and len(value) >= MIN_CLIENT_ID_LENGTH and bool(_USABLE_CLIENT_ID_RE.match(value))
 

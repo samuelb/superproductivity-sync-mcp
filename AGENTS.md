@@ -29,7 +29,7 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
 
 ## Commands
 
-- `uv sync --extra dev` — install. `uv run pytest` — tests. `uv run ruff check src tests && uv run ruff format --check src tests` — lint.
+- `uv sync --extra dev` — install. `uv run pytest` — tests. `uv run ruff check src tests && uv run ruff format --check src tests` — lint. `uv run mypy` — type check (config in `pyproject.toml`).
 - `uv run superproductivity-sync-mcp` — run locally (needs `.env`). `docker compose pull && docker compose up -d` — deploy the published image; `--build` builds locally.
 - CI (`.github/workflows/ci.yml`) runs lint+tests and publishes `ghcr.io/samuelb/superproductivity-sync-mcp` (see ADR-0009). Keep `uv.lock` current (`--frozen`). Dependabot (`.github/dependabot.yml`) opens weekly PRs for actions, the Docker base image and Python deps; merge them after CI passes.
 
