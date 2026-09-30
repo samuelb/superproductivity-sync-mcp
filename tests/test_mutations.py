@@ -142,6 +142,17 @@ def test_unschedule_task_payload_and_state():
     assert ctx.state["tag"]["entities"]["TODAY"]["taskIds"] == []
 
 
+def test_small_input_checks():
+    ctx = ctx_for()
+    with pytest.raises(m.MutationError, match="hex color"):
+        m.create_tag(ctx, title="x", color="red")
+    assert m.create_tag(ctx, title="short", color="#abc")["color"] == "#abc"
+    n = m.create_note(ctx, content="keep")
+    with pytest.raises(m.MutationError, match="delete_note"):
+        m.update_note(ctx, n["id"], content="   ")
+    assert ctx.state["note"]["entities"][n["id"]]["content"] == "keep"
+
+
 def test_validation_errors():
     ctx = ctx_for()
     with pytest.raises(m.NotFoundError):

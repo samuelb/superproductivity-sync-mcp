@@ -180,3 +180,9 @@ async def test_create_tasks_is_all_or_nothing(server, fake_dav):
     assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
     assert "Task 2 ('bad')" in str(err) and "Invalid day" in str(err)
     assert len(fake_dav.puts) == before
+
+
+async def test_empty_search_is_rejected(server):
+    """Regression: an empty query matched every task, project, note and tag."""
+    err = await call(server, "search", query="  ")
+    assert isinstance(err, ToolError) and "must not be empty" in str(err)

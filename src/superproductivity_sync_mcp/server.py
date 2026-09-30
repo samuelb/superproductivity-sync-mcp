@@ -220,6 +220,8 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     )
     @tool_errors
     async def search(query: str) -> dict[str, Any]:
+        if not query.strip():
+            raise m.MutationError("Search query must not be empty")
         ctx = await snapshot()
         return {"results": q.search(ctx.state, query, tz=ctx.tz, today=ctx.today)}
 

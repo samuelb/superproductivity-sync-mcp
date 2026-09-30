@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import random
+import re
 from typing import TYPE_CHECKING, Any
 
 from . import reducers as r
@@ -24,6 +25,7 @@ class NotFoundError(MutationError):
 
 
 MAX_BATCH = 50
+_HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
 # --- defaults (work-context.const.ts, project.const.ts, tag.const.ts) --------
@@ -428,6 +430,8 @@ def update_project(
 def create_tag(ctx: MutationContext, *, title: str, color: str | None = None) -> dict[str, Any]:
     state = ctx.state
     title = _clean_title(title)
+    if color is not None and not _HEX_COLOR_RE.match(color):
+        raise MutationError(f"Invalid color {color!r}; use a hex color like #29a1aa")
     tags = r.slice_(state, "tag")
     for tid in tags["ids"]:
         t = tags["entities"].get(tid) or {}
@@ -474,6 +478,8 @@ def create_note(
 def update_note(ctx: MutationContext, note_id: str, *, content: str) -> dict[str, Any]:
     state = ctx.state
     require_note(state, note_id)
+    if not content.strip():
+        raise MutationError("Note content must not be empty; use delete_note to remove a note")
     changes = {"content": content, "modified": ctx.now_ms}
     r.update_note(state, note_id, changes)
     ctx.emit("updateNote", note_id, {"note": {"id": note_id, "changes": changes}})
