@@ -6,7 +6,7 @@
 services:
   sync-mcp:
     # Published by .github/workflows/ci.yml. Override the tag with IMAGE_TAG
-    # (a release such as `0.1.0`, `latest`, or `sha-<commit>`). To build
+    # (a release such as `0.2.0`, `latest`, or `sha-<commit>`). To build
     # locally instead: `docker compose build`.
     image: ghcr.io/samuelb/superproductivity-sync-mcp:${IMAGE_TAG:-main}
     build: .

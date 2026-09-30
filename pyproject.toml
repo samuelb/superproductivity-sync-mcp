@@ -1,6 +1,6 @@
 [project]
 name = "superproductivity-sync-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for Super Productivity: reads and updates the Nextcloud sync file (sync-data.json) as a peer sync client."
 readme = "README.md"
 requires-python = ">=3.14"
