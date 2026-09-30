@@ -23,6 +23,10 @@ code, which may be redistributed with its notice.
   reporting (`SECURITY.md`), not public issues.
 - Secret scanning with push protection is enabled (2026-09-30): a push that
   contains a recognised credential is rejected before it becomes public.
+- The "Protect main" ruleset (2026-09-30) rejects deleting `main` and
+  non-fast-forward pushes to it, for everyone: published history is never
+  rewritten, since clones, image `sha-` tags and release tags point into it.
+  Direct commits stay allowed (trunk-based, `AGENTS.md`).
 - Third-party actions in CI are pinned to full commit SHAs with the release
   in a comment; Dependabot updates both.
 - Build, tags and the `docker-compose.yml` default from ADR-0009 are
