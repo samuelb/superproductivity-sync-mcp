@@ -225,7 +225,36 @@ async def test_write_uses_put_etag_and_skips_verification_download(store, fake_d
     store.verify_upload = True
     fake_dav.gets = 0
     await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
-    assert fake_dav.gets == 2  # download + verification
+    assert fake_dav.gets == 1  # verification only: the write started from the cached revision
+
+
+async def test_consecutive_writes_start_from_the_cached_revision(store, fake_dav):
+    """ADR-0014: a burst of writes does not re-download the multi-MB file each time."""
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    gets = fake_dav.gets
+    await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
+    assert fake_dav.gets == gets  # etag check only
+    titles = {t["title"] for t in decode_remote(fake_dav)["state"]["task"]["entities"].values()}
+    assert {"A", "B"} <= titles
+
+
+async def test_write_after_another_device_wrote_downloads_first(store, fake_dav):
+    from superproductivity_sync_mcp import codec
+
+    await store.mutate(lambda ctx: m.create_task(ctx, title="A"))
+    env = decode_remote(fake_dav)
+    env["syncVersion"] += 1
+    env["state"]["task"]["entities"]["t2"]["title"] = "Changed on the phone"
+    fake_dav.files[f"{BASE}/sync-data.json"] = codec.encode_sync_file(
+        env, codec.PrefixFlags(False, False, 2), None
+    ).encode()
+    gets, puts = fake_dav.gets, len(fake_dav.puts)
+    await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
+    main_puts = [p for p, _ in fake_dav.puts[puts:] if p.endswith("/sync-data.json")]
+    assert fake_dav.gets == gets + 1 and len(main_puts) == 1  # downloaded first, so no 412 and retry
+    out = decode_remote(fake_dav)["state"]["task"]["entities"]
+    assert out["t2"]["title"] == "Changed on the phone"  # nothing lost
+    assert {"A", "B"} <= {t["title"] for t in out.values()}
 
 
 async def test_codec_work_runs_off_the_event_loop(store, monkeypatch):
@@ -280,10 +309,18 @@ async def test_old_backups_are_pruned_after_a_week(store, fake_dav):
     assert sorted(d.rsplit("/", 1)[-1] for d in fake_dav.deletes) == sorted(drop)
 
     # pruning is throttled: the next write within the hour does not list again
-    propfinds = fake_dav.propfinds
+    listings = 0
+    list_names = store.dav.list_names
+
+    async def counting_list_names():
+        nonlocal listings
+        listings += 1
+        return await list_names()
+
+    store.dav.list_names = counting_list_names
     fake_dav.files[f"{BASE}/{drop[0]}"] = b"old"
     await store.mutate(lambda ctx: m.create_task(ctx, title="B"))
-    assert fake_dav.propfinds == propfinds and f"{BASE}/{drop[0]}" in fake_dav.files
+    assert listings == 0 and f"{BASE}/{drop[0]}" in fake_dav.files
 
     # ... but does once the interval has passed
     store._last_prune -= 4000

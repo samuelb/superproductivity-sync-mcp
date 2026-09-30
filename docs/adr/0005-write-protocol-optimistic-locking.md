@@ -1,6 +1,6 @@
 # ADR-0005: Write protocol — conditional PUT, backup first, verify, retry
 
-- **Status:** Accepted (step 3 amended by ADR-0012, step 6 by ADR-0010)
+- **Status:** Accepted (step 1 amended by ADR-0014, step 3 by ADR-0012, step 6 by ADR-0010)
 - **Date:** 2026-09-07
 - **Sources:** `src/superproductivity_sync_mcp/store.py`, `src/superproductivity_sync_mcp/webdav.py`; app
   `file-based-sync-adapter.service.ts` (`_uploadOps`, `_uploadWithMismatchFallback`),

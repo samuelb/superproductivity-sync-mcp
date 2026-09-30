@@ -2,7 +2,8 @@
 
 Write cycle (mirrors ``FileBasedSyncAdapterService._uploadOps``):
 
-1. Download the current file (strong etag from Nextcloud).
+1. Start from the cached revision when a PROPFIND shows its strong etag is
+   still current, else download the file (ADR-0014).
 2. Run the mutation against a deep copy of the snapshot; it emits operations.
 3. Build the new envelope: ``syncVersion + 1``, ops tagged with that ``sv``,
    vector clock incremented for this client per op, ``recentOps`` trimmed.
@@ -51,7 +52,7 @@ from .syncfile import (
     validate_envelope,
 )
 from .timeutil import get_start_of_next_day_diff_ms, today_str
-from .webdav import Locked, NextcloudDav, NotFound, PreconditionFailed
+from .webdav import Locked, NextcloudDav, NotFound, PreconditionFailed, WebDavError
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -344,11 +345,27 @@ class SyncStore:
                 del envelope[k]
         return envelope
 
+    async def _revision_for_write(self) -> SyncFile:
+        """The revision a write starts from (ADR-0014).
+
+        The cache when a PROPFIND shows its strong etag is still current, which
+        spares a burst of writes the multi-MB download each; otherwise a fresh
+        download. If-Match on the upload closes the gap either way.
+        """
+        cached = self._cache
+        if cached is not None and cached.strong_etag:
+            try:
+                if await self.dav.get_etag(SYNC_FILE) == cached.strong_etag:
+                    return cached
+            except WebDavError as e:
+                log.debug("etag pre-check before write failed: %s", e)
+        return await self._download()
+
     async def mutate(self, fn: Callable[[MutationContext], T]) -> T:
         async with self._lock:
             last_error: Exception | None = None
             for attempt in range(1, self.max_attempts + 1):
-                sf = await self._download()
+                sf = await self._revision_for_write()
                 if sf.schema_version > MAX_SCHEMA_VERSION:
                     raise SyncFormatError(
                         f"The sync file uses Super Productivity data schema {sf.schema_version}; this server "
