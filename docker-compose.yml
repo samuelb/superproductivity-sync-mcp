@@ -27,7 +27,7 @@ services:
   # --- Optional bundled Caddy reverse proxy (profile: caddy) --------------
   # docker compose --profile caddy up -d
   caddy:
-    image: caddy:2
+    image: caddy:2.11.4  # pinned; Dependabot bumps it
     profiles: ["caddy"]
     restart: unless-stopped
     ports:
