@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     mcp_path: str = "/mcp"
 
     data_dir: Path = Path("/data")
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # noqa: S104 (container default; only the proxy network reaches it)
     port: int = 8000
     forwarded_allow_ips: str = Field(
         default="*",

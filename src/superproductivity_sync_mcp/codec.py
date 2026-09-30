@@ -178,7 +178,7 @@ def decrypt(data: str, password: str) -> str:
     if len(raw) < _MIN_ARGON2_SIZE:
         try:
             return _decrypt_legacy(raw, password)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise DecryptError("Decryption failed (legacy format) — wrong password?") from e
     salt, iv, ct = (
         raw[:SALT_LENGTH],
@@ -190,7 +190,7 @@ def decrypt(data: str, password: str) -> str:
     except Exception:  # noqa: BLE001
         try:
             return _decrypt_legacy(raw, password)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise DecryptError("Decryption failed — wrong password or corrupt file") from e
 
 

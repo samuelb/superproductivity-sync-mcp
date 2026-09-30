@@ -224,7 +224,9 @@ class NextcloudDav:
         if resp.status_code != 207:
             return None
         try:
-            root = ET.fromstring(resp.content)
+            # The configured Nextcloud's XML; expat >= 2.4.1 caps entity expansion and
+            # ElementTree never resolves external entities.
+            root = ET.fromstring(resp.content)  # noqa: S314
         except ET.ParseError:
             return None
         for el in root.iter():
@@ -282,7 +284,9 @@ class NextcloudDav:
         if resp.status_code != 207:
             raise HttpError(resp.status_code, "PROPFIND", self.sync_folder, resp.text)
         try:
-            root = ET.fromstring(resp.content)
+            # The configured Nextcloud's XML; expat >= 2.4.1 caps entity expansion and
+            # ElementTree never resolves external entities.
+            root = ET.fromstring(resp.content)  # noqa: S314
         except ET.ParseError as e:
             raise WebDavError(f"Unparseable PROPFIND response for {self.sync_folder}") from e
         folder_path = unquote(urlparse(folder).path).rstrip("/")

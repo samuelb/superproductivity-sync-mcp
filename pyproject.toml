@@ -43,7 +43,10 @@ line-length = 120
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP"]
+# S (bandit), BLE (blind except) and A (shadowed builtins) back the noqa
+# comments in the code; RUF100 flags noqa comments that no longer apply.
+select = ["E", "F", "I", "B", "UP", "S", "BLE", "A", "RUF100"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["E501"]
+# Tests assert, and use fixed passwords and hashes on purpose.
+"tests/*" = ["E501", "S"]
