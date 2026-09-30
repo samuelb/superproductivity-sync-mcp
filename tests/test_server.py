@@ -31,7 +31,7 @@ async def call(server, name, **args):
 
 async def test_tool_schemas_survive_the_error_wrapper(server):
     tools = {t.name: t for t in await server.list_tools()}
-    assert len(tools) == 23
+    assert len(tools) == 24
     schema = tools["create_task"].input_schema
     assert schema["required"] == ["title"]
     assert "due_day" in schema["properties"] and "parent_task_id" in schema["properties"]
@@ -153,3 +153,30 @@ async def test_unusable_sync_file_needs_the_operator(server, store, fake_dav, bo
     err = await call(server, "get_overview")
     assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
     assert "needs the operator" in str(err) and "retry" not in str(err) and detail in str(err)
+
+
+async def test_create_tasks_is_one_write_in_the_given_order(server, fake_dav):
+    from .conftest import decode_remote
+
+    before = len(fake_dav.puts)
+    res = await call(
+        server,
+        "create_tasks",
+        tasks=[{"title": "A", "due_day": "today"}, {"title": "B"}, {"title": "Sub", "parent_task_id": "t1"}],
+    )
+    assert not isinstance(res, ToolError)
+    assert [t["title"] for t in res.structured_content["tasks"]] == ["A", "B", "Sub"]
+    assert len([p for p, _ in fake_dav.puts[before:] if p.endswith("/sync-data.json")]) == 1
+    env = decode_remote(fake_dav)
+    assert [op["a"] for op in env["recentOps"][-3:]] == ["HA", "HA", "TA"]
+    ents = env["state"]["task"]["entities"]
+    inbox = env["state"]["project"]["entities"]["INBOX_PROJECT"]["taskIds"]
+    assert [ents[i]["title"] for i in inbox[:2]] == ["A", "B"]  # top of the list, in the given order
+
+
+async def test_create_tasks_is_all_or_nothing(server, fake_dav):
+    before = len(fake_dav.puts)
+    err = await call(server, "create_tasks", tasks=[{"title": "ok"}, {"title": "bad", "due_day": "someday"}])
+    assert isinstance(err, ToolError) and not isinstance(err, UnexpectedToolError)
+    assert "Task 2 ('bad')" in str(err) and "Invalid day" in str(err)
+    assert len(fake_dav.puts) == before

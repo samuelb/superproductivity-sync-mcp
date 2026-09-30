@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import reducers as r
 from .ids import nanoid
-from .timeutil import day_time_to_ms, db_date_str, resolve_day
+from .timeutil import InputError, day_time_to_ms, db_date_str, resolve_day
 
 if TYPE_CHECKING:
     from .store import MutationContext
@@ -21,6 +21,9 @@ class MutationError(ValueError):
 
 class NotFoundError(MutationError):
     pass
+
+
+MAX_BATCH = 50
 
 
 # --- defaults (work-context.const.ts, project.const.ts, tag.const.ts) --------
@@ -259,6 +262,30 @@ def create_task(
         },
     )
     return r.get_entity(r.slice_(state, "task"), task["id"]) or task
+
+
+def create_tasks(
+    ctx: MutationContext, specs: list[dict[str, Any]], *, add_to_bottom: bool = False
+) -> list[dict[str, Any]]:
+    """Create several tasks in one write; all or nothing.
+
+    ``specs`` hold ``create_task`` keyword arguments (without ``add_to_bottom``).
+    The tasks keep the given order in their project, tag, Today and planner
+    lists: inserting at the top, the list is created back to front. Sub-tasks
+    are appended to their parent, so they are always created in order.
+    """
+    if not 1 <= len(specs) <= MAX_BATCH:
+        raise MutationError(f"Pass between 1 and {MAX_BATCH} tasks")
+    top_level = [i for i, s in enumerate(specs) if not s.get("parent_task_id")]
+    sub_tasks = [i for i, s in enumerate(specs) if s.get("parent_task_id")]
+    order = [*(top_level if add_to_bottom else reversed(top_level)), *sub_tasks]
+    created: dict[int, dict[str, Any]] = {}
+    for i in order:
+        try:
+            created[i] = create_task(ctx, **specs[i], add_to_bottom=add_to_bottom)
+        except (MutationError, InputError) as e:
+            raise type(e)(f"Task {i + 1} ({specs[i].get('title')!r}): {e}") from e
+    return [created[i] for i in range(len(specs))]
 
 
 def update_task(

@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from . import __version__
 from . import mutations as m
@@ -38,7 +38,22 @@ Conventions:
   `schedule_task` instead of assigning the TODAY tag.
 - Prefer `get_today` for "what should I do today", `get_planner` for the week ahead and
   `list_tasks` with filters for everything else. Call `get_task` before editing a task.
+- Every write rewrites the whole sync file: create several tasks with one `create_tasks`
+  call rather than repeated `create_task` calls.
 """
+
+
+class NewTask(BaseModel):
+    """One task for ``create_tasks``; the fields of ``create_task``."""
+
+    title: str
+    project_id: str | None = None
+    notes: Annotated[str | None, Field(description="Markdown notes")] = None
+    tag_ids: list[str] | None = None
+    due_day: Annotated[str | None, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")] = None
+    time_estimate_minutes: Annotated[int | None, Field(ge=0)] = None
+    parent_task_id: Annotated[str | None, Field(description="An existing task, not one from this batch")] = None
+
 
 RO = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 RW = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
@@ -279,6 +294,38 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
                 ),
             )
         )
+
+    @server.tool(
+        annotations=RW,
+        description=(
+            f"Create up to {m.MAX_BATCH} tasks in one write, all or nothing, in the given order. Each item takes "
+            "the fields of create_task; parent_task_id must name an existing task. Much faster than repeated "
+            "create_task calls."
+        ),
+    )
+    @tool_errors
+    async def create_tasks(
+        tasks: Annotated[list[NewTask], Field(min_length=1, max_length=m.MAX_BATCH)],
+        add_to_bottom: Annotated[bool, Field(description="Append at the end instead of the top")] = False,
+    ) -> dict[str, Any]:
+        specs = [
+            {
+                "title": t.title,
+                "project_id": t.project_id,
+                "notes": t.notes,
+                "tag_ids": t.tag_ids,
+                "due_day": t.due_day,
+                "time_estimate_ms": _min_to_ms(t.time_estimate_minutes),
+                "parent_task_id": t.parent_task_id,
+            }
+            for t in tasks
+        ]
+
+        def run(ctx) -> dict[str, Any]:
+            created = m.create_tasks(ctx, specs, add_to_bottom=add_to_bottom)
+            return {"count": len(created), "tasks": [task_out(ctx, t) for t in created]}
+
+        return await store.mutate(run)
 
     @server.tool(
         annotations=RW,

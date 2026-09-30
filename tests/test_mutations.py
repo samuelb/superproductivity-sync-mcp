@@ -68,6 +68,30 @@ def test_subtask_rules():
     assert ctx.ops[-1].action == "addSubTask" and ctx.ops[-1].action_payload["parentId"] == "t1"
 
 
+def test_create_tasks_keeps_the_given_order():
+    ctx = ctx_for()
+    specs = [{"title": "A", "due_day": "+2"}, {"title": "B", "due_day": "+2"}]
+    created = m.create_tasks(ctx, [dict(s) for s in specs])
+    assert [t["title"] for t in created] == ["A", "B"]
+    ids = [t["id"] for t in created]
+    assert ctx.state["project"]["entities"]["INBOX_PROJECT"]["taskIds"][:2] == ids
+    assert ctx.state["planner"]["days"]["2026-09-09"][:2] == ids  # t2 was already planned there
+
+    ctx = ctx_for()
+    created = m.create_tasks(ctx, [dict(s) for s in specs], add_to_bottom=True)
+    assert ctx.state["project"]["entities"]["INBOX_PROJECT"]["taskIds"][-2:] == [t["id"] for t in created]
+
+
+def test_create_tasks_limits():
+    ctx = ctx_for()
+    with pytest.raises(m.MutationError, match="between 1 and"):
+        m.create_tasks(ctx, [])
+    with pytest.raises(m.MutationError, match="between 1 and"):
+        m.create_tasks(ctx, [{"title": str(i)} for i in range(m.MAX_BATCH + 1)])
+    with pytest.raises(m.NotFoundError, match=r"Task 1 \('x'\): Project 'nope'"):
+        m.create_tasks(ctx, [{"title": "x", "project_id": "nope"}])
+
+
 def test_update_task_emits_only_the_given_changes():
     ctx = ctx_for()
     out = m.update_task(ctx, "t2", title="  Buy oat milk ", notes="2 l", time_estimate_ms=900000, tag_ids=["g1"])

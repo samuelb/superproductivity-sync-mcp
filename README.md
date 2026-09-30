@@ -51,7 +51,7 @@ files are supported; the flags found in the remote file are preserved on write.
 | `get_overview`, `get_today`, `get_planner`, `list_tasks`, `get_task` | read tasks |
 | `list_projects`, `list_tags`, `list_notes`, `sync_status` | read the rest |
 | `search`, `fetch` | generic search/fetch (required by ChatGPT connectors) |
-| `create_task`, `update_task`, `schedule_task`, `unschedule_task`, `move_task_to_project`, `delete_task` | tasks |
+| `create_task`, `create_tasks` (up to 50 in one write), `update_task`, `schedule_task`, `unschedule_task`, `move_task_to_project`, `delete_task` | tasks |
 | `create_project`, `update_project`, `create_tag` | projects & tags |
 | `create_note`, `update_note`, `delete_note` | notes |
 
