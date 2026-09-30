@@ -229,20 +229,6 @@ def remove_tasks_from_all_tags(state: dict[str, Any], task_ids: list[str]) -> No
             tag["taskIds"] = [i for i in tag["taskIds"] if i not in ts]
 
 
-def remove_tasks_from_all_projects(state: dict[str, Any], task_ids: list[str]) -> None:
-    if not task_ids:
-        return
-    projects = slice_(state, "project")
-    ts = set(task_ids)
-    for pid in projects["ids"]:
-        p = projects["entities"].get(pid)
-        if not p:
-            continue
-        if any(i in ts for i in p.get("taskIds") or []) or any(i in ts for i in p.get("backlogTaskIds") or []):
-            p["taskIds"] = [i for i in (p.get("taskIds") or []) if i not in ts]
-            p["backlogTaskIds"] = [i for i in (p.get("backlogTaskIds") or []) if i not in ts]
-
-
 def _planner_days(state: dict[str, Any]) -> dict[str, list[str]] | None:
     planner = state.get("planner")
     if not isinstance(planner, dict) or not isinstance(planner.get("days"), dict):
