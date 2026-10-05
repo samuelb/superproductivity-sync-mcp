@@ -1,5 +1,5 @@
 # Pinned uv release (Dependabot bumps this line like the base image).
-FROM ghcr.io/astral-sh/uv:0.12.21 AS uv
+FROM ghcr.io/astral-sh/uv:0.12.23 AS uv
 
 FROM python:3.14-slim AS builder
 COPY --from=uv /uv /usr/local/bin/uv
