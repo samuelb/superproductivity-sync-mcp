@@ -51,6 +51,8 @@ sync folder via WebDAV. Python 3.14 (`.python-version`), `mcp` SDK 2.x, streamab
 - Do not add tools that emit full-state operations or touch archives.
 - Every tool carries `@tool_errors` under `@server.tool(...)` (ADR-0011); raise
   the domain exceptions (`MutationError`, `SyncError`, ...) and let it map them.
+- Tool input schemas must not contain `$ref`/`$defs` (ADR-0015): give a nested
+  model parameter an inline schema with `pydantic.WithJsonSchema`.
 
 ## Workflow
 

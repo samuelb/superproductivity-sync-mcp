@@ -10,7 +10,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, WithJsonSchema
 
 from . import __version__
 from . import mutations as m
@@ -53,6 +53,13 @@ class NewTask(BaseModel):
     due_day: Annotated[str | None, Field(description="YYYY-MM-DD, 'today', 'tomorrow' or '+N'")] = None
     time_estimate_minutes: Annotated[int | None, Field(ge=0)] = None
     parent_task_id: Annotated[str | None, Field(description="An existing task, not one from this batch")] = None
+
+
+# Pydantic would put NewTask under `$defs` and point at it with `$ref`; some MCP
+# clients (Pebble Index) cannot load a server whose tool schemas do (ADR-0015).
+NEW_TASKS_SCHEMA = WithJsonSchema(
+    {"type": "array", "items": NewTask.model_json_schema(), "minItems": 1, "maxItems": m.MAX_BATCH}
+)
 
 
 RO = ToolAnnotations(read_only_hint=True, open_world_hint=False)
@@ -307,7 +314,7 @@ def build_server(store: SyncStore, settings: Settings) -> MCPServer:
     )
     @tool_errors
     async def create_tasks(
-        tasks: Annotated[list[NewTask], Field(min_length=1, max_length=m.MAX_BATCH)],
+        tasks: Annotated[list[NewTask], Field(min_length=1, max_length=m.MAX_BATCH), NEW_TASKS_SCHEMA],
         add_to_bottom: Annotated[bool, Field(description="Append at the end instead of the top")] = False,
     ) -> dict[str, Any]:
         specs = [

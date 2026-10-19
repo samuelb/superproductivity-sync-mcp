@@ -27,3 +27,4 @@ mark the old one superseded in the same commit. Use `0000-template.md`.
 | [0012](0012-timestamped-backup-history.md) | Keep a week of timestamped backups instead of one `.bak` | Accepted |
 | [0013](0013-public-repository-and-image.md) | Publish the repository and the container image | Accepted |
 | [0014](0014-start-writes-from-cached-revision.md) | Start writes from the cached revision when its etag is current | Accepted |
+| [0015](0015-self-contained-tool-schemas.md) | Keep tool input schemas free of `$ref` and `$defs` | Accepted |

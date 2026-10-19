@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 
@@ -37,6 +39,23 @@ async def test_tool_schemas_survive_the_error_wrapper(server):
     assert "due_day" in schema["properties"] and "parent_task_id" in schema["properties"]
     assert tools["create_task"].description.startswith("Create a task")
     assert tools["get_task"].annotations.read_only_hint is True
+
+
+async def test_tool_schemas_are_self_contained(server):
+    """Pebble Index hangs on schemas with $ref/$defs (ADR-0015)."""
+    for tool in await server.list_tools():
+        schema = json.dumps(tool.input_schema)
+        assert "$ref" not in schema and "$defs" not in schema, tool.name
+    items = {t.name: t for t in await server.list_tools()}["create_tasks"].input_schema["properties"]["tasks"]
+    assert items["minItems"] == 1 and items["maxItems"] == 50
+    assert items["items"]["required"] == ["title"] and "due_day" in items["items"]["properties"]
+
+
+async def test_create_tasks_still_validates_its_items(server, fake_dav):
+    for tasks in ([], [{"title": "x"}] * 51, [{"notes": "no title"}], [{"title": "x", "time_estimate_minutes": -1}]):
+        with pytest.raises(ToolError):
+            await server.call_tool("create_tasks", {"tasks": tasks})
+    assert not fake_dav.puts
 
 
 async def test_successful_call_returns_result(server):
